@@ -1,0 +1,31 @@
+strict digraph  {
+	Agreen	 [shape=ellipse];
+	Agreen2yellow	 [shape=box];
+	Agreen -> Agreen2yellow;
+	Ared	 [shape=ellipse];
+	Ared2green	 [shape=box];
+	Ared -> Ared2green;
+	Ayellow	 [shape=ellipse];
+	Agreen2yellow -> Ayellow;
+	Bred2green	 [shape=box];
+	Bgreen	 [shape=ellipse];
+	Bred2green -> Bgreen;
+	Bgreen2yellow	 [shape=box];
+	Byellow	 [shape=ellipse];
+	Bgreen2yellow -> Byellow;
+	Bred	 [shape=ellipse];
+	Bred -> Bred2green;
+	Bgreen -> Bgreen2yellow;
+	start	 [shape=ellipse];
+	start -> Bred2green;
+	start -> Ared2green;
+	Byellow2red	 [shape=box];
+	Byellow2red -> start;
+	Byellow2red -> Bred;
+	Ayellow2red	 [shape=box];
+	Ayellow2red -> start;
+	Ayellow2red -> Ared;
+	Ayellow -> Ayellow2red;
+	Ared2green -> Agreen;
+	Byellow -> Byellow2red;
+}

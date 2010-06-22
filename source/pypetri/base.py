@@ -9,33 +9,46 @@ import pypetri.hub as phub
 #############################################################################
 #############################################################################
 
-class Relation(phub.Connector):
+class BaseRelation(phub.Connector):
     
     domains = trellis.make(tuple)
     
     def __init__(self, domains, **kwargs):
-        super(Relation, self).__init__(domains=domains, **kwargs)
+        super(BaseRelation, self).__init__(domains=domains, **kwargs)
     
     @trellis.modifier
     def bind(self, other):
-        if not isinstance(other, Relation):
+        if not isinstance(other, BaseRelation):
             raise TypeError(self, other)
         if not issubclass(self.domains[0], other.domains[0]):
             raise TypeError(self, other)
         if not issubclass(other.domains[1], self.domains[1]):
             raise TypeError(self, other)
-        super(Relation, self).bind(other)
+        super(BaseRelation, self).bind(other)
+    
+    @ trellis.modifier
+    def push(self, marking):
+        self.superior.push(marking)
 
+    @ trellis.modifier
+    def pull(self, marking):
+        self.superior.pull(marking)
+        
 #############################################################################
 #############################################################################
     
 class BaseCondition(phub.Hub):
-    pass
+    
+    marking = trellis.attr(None)
+    
+    clock = property(lambda self: self.superior.clock)
         
 #############################################################################
 #############################################################################
 
 class BaseTransition(phub.Hub):
+    
+    clock = property(lambda self: self.superior.clock)
     
     def enabled(self):
         """Returns an iterator over a set of enabling Events."""
@@ -50,6 +63,8 @@ class BaseTransition(phub.Hub):
 
 class BaseArc(phub.Hub):
     
+    clock = property(lambda self: self.superior.clock)
+    
     domains = trellis.make(tuple)
     
     def __init__(self, domains, **kwargs):
@@ -62,6 +77,22 @@ class BaseArc(phub.Hub):
         """Returns an iterator over a set of enabling Markings."""
         pass
     
+    @trellis.modifier
+    def push(self, marking):
+        output = self.traverse(1)
+        if not output:
+            raise ValueError(marking)
+        output = self.root.get(output[0])
+        output.push(marking)
+    
+    @trellis.modifier
+    def pull(self, marking):
+        input = self.traverse(0)
+        if not input:
+            raise ValueError(marking)
+        input = self.root.get(input[0])
+        input.pull(marking)
+    
 #############################################################################
 #############################################################################
 
@@ -69,11 +100,12 @@ class BaseMarking(trellis.Component):
     """Mapping of a hub to some tokens. """
     
     hub = trellis.make(None)
+    timestamp = trellis.attr(0)
 
-    def add(self, other):
+    def push(self, other):
         pass
     
-    def remove(self, other):
+    def pull(self, other):
         pass
     
     def disjoint(self, subs):
@@ -82,12 +114,12 @@ class BaseMarking(trellis.Component):
 #############################################################################
 #############################################################################
 
-class Event(trellis.Component):
+class BaseEvent(trellis.Component):
     
     transition = trellis.make(None)
     
     def __init__(self, *args, **kwargs):
-        super(Event, self).__init__(*args, **kwargs)
+        super(BaseEvent, self).__init__(*args, **kwargs)
         self.markings = { }
 
     def add(self, other):
@@ -101,21 +133,21 @@ class Event(trellis.Component):
 #############################################################################
 #############################################################################
 
-class Declarations(object):
+class BaseDeclarations(object):
 
     ROLES = []
 
 #############################################################################
 #############################################################################
 
-class Collective(phub.Hub):
-    
-    clock = trellis.attr(0)
+class BaseCollective(phub.Hub):
+
     declarations = trellis.make(None)
 
-    def __init__(self, **kwargs):
-        super(Collective, self).__init__(**kwargs)
-        self.markings = trellis.Dict()
+    def __init__(self, declarations, **kwargs):
+        if 'clock' not in kwargs:
+            kwargs['clock'] = 0
+        super(BaseCollective, self).__init__(declarations=declarations, **kwargs)
         self.roles = {}
         for role in self.declarations.ROLES:
             self.roles[role] = trellis.Set()
@@ -123,8 +155,8 @@ class Collective(phub.Hub):
     @trellis.modifier
     def Arc(self, *args, **kwargs):
         arc = self.declarations.Arc(*args, **kwargs)
-        cin = Relation(domains=(arc.domains[0], arc.__class__), name='0')
-        cout = Relation(domains=(arc.__class__, arc.domains[1]), name='1')
+        cin = self.declarations.Relation(domains=(arc.domains[0], arc.__class__), name='0')
+        cout = self.declarations.Relation(domains=(arc.__class__, arc.domains[1]), name='1')
         arc.add(cin)
         arc.add(cout)
         return arc
@@ -153,8 +185,6 @@ class Collective(phub.Hub):
                 for role in self.declarations.ROLES:
                     if isinstance(inferior, role):
                         self.roles[role].add(inferior.name)
-                        if issubclass(role, BaseCondition):
-                            self.markings[inferior.name] = self.declarations.Marking(hub=inferior)
                         break
         changes = self.inferiors.deleted
         if changes:
@@ -162,8 +192,6 @@ class Collective(phub.Hub):
                 for role in self.declarations.ROLES:
                     if isinstance(inferior, role):
                         self.roles[role].remove(inferior.name)
-                        if issubclass(role, BaseCondition):
-                            del self.markings[inferior.name]
                         break
     
     @trellis.modifier
@@ -186,8 +214,10 @@ class Collective(phub.Hub):
     def marking(self, uid):
         if not self.is_sub(uid):
             raise ValueError(uid)
+        if not self.is_actor(uid, self.declarations.Condition):
+            raise TypeError(uid)
         condition = self.get(uid)
-        return self.markings[condition.name]
+        return condition.marking
 
     def disjoint(self, events):
         # find shared input conditions
@@ -199,15 +229,14 @@ class Collective(phub.Hub):
                 if path is None:
                     raise ValueError(arc)
                 uid = path[1]
-                if self.is_actor(uid, BaseCondition):
-                    pname = self.get(uid).name
-                    if pname not in inputs:
-                        inputs[pname] = []
-                    inputs[pname].append(marking)
-        for pname, markings in inputs.iteritems():
+                if self.is_actor(uid, self.declarations.Condition):
+                    if uid not in inputs:
+                        inputs[uid] = []
+                    inputs[uid].append(marking)
+        for uid, markings in inputs.iteritems():
             if len(markings) < 2:
                 continue
-            superset = self.markings[pname]
+            superset = self.marking(uid)
             if not superset.disjoint(markings):
                 return False
         return True    
@@ -223,24 +252,20 @@ class Collective(phub.Hub):
         for event in inevents:
             for marking in event.markings.itervalues():
                 arc = marking.hub
-                path = arc.traverse(0)
-                if path is None:
-                    raise ValueError(arc)
-                pmarking = self.marking(path[1])
-                pmarking.remove(marking)
+                arc.pull(marking)
         for event in outevents:
             for marking in event.markings.itervalues():
                 arc = marking.hub
-                path = arc.traverse(1)
-                if path is None:
-                    raise ValueError(arc)
-                pmarking = self.marking(path[1])
-                pmarking.add(marking)
-        self.tick()
+                arc.push(marking)
     
-    @trellis.modifier
-    def tick(self):
-        self.clock += 1
-                
+    @trellis.maintain
+    def clock(self):
+        clock = self.clock
+        for cond in self.actors(self.declarations.Condition):
+            marking = self.marking(cond)
+            if marking.timestamp > clock:
+                clock = marking.timestamp
+        return clock
+
 #############################################################################
 #############################################################################

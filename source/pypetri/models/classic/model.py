@@ -12,12 +12,16 @@ class ClassicMarking(pbase.BaseMarking):
 
     count = trellis.attr(0)
 
-    def add(self, other):
+    def push(self, other):
         self.count += other.count
+        if other.timestamp >= self.timestamp:
+            self.timestamp = other.timestamp + 1
     
-    def remove(self, other):
+    def pull(self, other):
         assert self.count >= other.count
         self.count -= other.count
+        if other.timestamp >= self.timestamp:
+            self.timestamp = other.timestamp + 1
     
     def disjoint(self, subs):
         sum = reduce(lambda x,y: x.count + y.count, subs)
@@ -42,7 +46,9 @@ class ClassicArc(pbase.BaseArc):
             return
         pmarks = self.superior.marking(puid)
         if pmarks.count >= self.capacity:
-            marks = self.superior.declarations.Marking(hub=self, count=self.capacity)
+            marks = self.superior.declarations.Marking(hub=self, 
+                                                       count=self.capacity,
+                                                       timestamp=pmarks.timestamp)
             yield marks
         return
 
@@ -52,7 +58,7 @@ class ClassicArc(pbase.BaseArc):
 class ClassicTransition(pbase.BaseTransition):
     
     def enabled(self):
-        event = pbase.Event(transition=self)
+        event = pbase.BaseEvent(transition=self)
         for path in self.peerings.itervalues():
             if not path:
                 continue
@@ -70,8 +76,9 @@ class ClassicTransition(pbase.BaseTransition):
         return
     
     def fire(self, inevent):
-        outevent = pbase.Event(transition=self)
+        outevent = pbase.BaseEvent(transition=self)
         available = reduce(lambda x,y: x+y, [m.count for m in inevent.markings.itervalues()])
+        timestamp = reduce(lambda x,y: max(x,y), [m.timestamp for m in inevent.markings.itervalues()])
         for path in self.peerings.itervalues():
             if not path:
                 continue
@@ -81,7 +88,9 @@ class ClassicTransition(pbase.BaseTransition):
                 continue
             if available < arc.capacity:
                 raise ValueError(self)
-            marks = Declarations.Marking(hub=arc, count=arc.capacity)
+            marks = self.superior.declarations.Marking(hub=arc, 
+                                                       count=arc.capacity,
+                                                       timestamp=timestamp)
             available -= marks.count
             outevent.markings[uid] = marks
         if available != 0:
@@ -92,25 +101,36 @@ class ClassicTransition(pbase.BaseTransition):
 #############################################################################
   
 class ClassicCondition(pbase.BaseCondition):
-    pass
+    
+    def __init__(self, *args, **kwargs):
+        marking = Declarations.Marking(hub=self)
+        super(ClassicCondition, self).__init__(*args, marking=marking, **kwargs)
 
+    @trellis.modifier
+    def push(self, other):
+        self.marking.push(other)
+    
+    @trellis.modifier
+    def pull(self, other):
+        self.marking.pull(other)
+            
 #############################################################################
 #############################################################################
 
-class Declarations(pbase.Declarations):
+class Declarations(pbase.BaseDeclarations):
     
     Condition = ClassicCondition
     Transition = ClassicTransition
     Arc = ClassicArc
     Marking = ClassicMarking
-    Relation = pbase.Relation
+    Relation = pbase.BaseRelation
     
 Declarations.ROLES = [Declarations.Condition, Declarations.Transition, Declarations.Arc]
 
 #############################################################################
 #############################################################################
   
-class ClassicCollective(pbase.Collective):
+class ClassicCollective(pbase.BaseCollective):
     
     ARC_TOKEN = "->"
     
