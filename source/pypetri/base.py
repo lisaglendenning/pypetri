@@ -168,12 +168,19 @@ class BaseCollective(phub.Hub):
             if name in self.roles[r]:
                 if issubclass(r, role):
                     return True
+        for inferior in self.inferiors.itervalues():
+            if isinstance(inferior, BaseCollective):
+                if inferior.is_actor(uid, role):
+                    return True
         return False
     
     def actors(self, role):
         for r in self.roles:
             if issubclass(r, role):
                 actors = set([self.inferiors[name].uid for name in self.roles[r]])
+                for inferior in self.inferiors.itervalues():
+                    if isinstance(inferior, BaseCollective):
+                        actors.update(inferior.actors(role))
                 return actors
         raise KeyError(self, role)
     
