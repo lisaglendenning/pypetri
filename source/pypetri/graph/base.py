@@ -19,7 +19,7 @@ class CollectiveGraph(trellis.Component):
     def __init__(self, hubgraph, **kwargs):
         super(CollectiveGraph, self).__init__(hubgraph=hubgraph, **kwargs)
 
-    def snapshot(self):
+    def dotgraph(self):
         root = self.hubgraph.hub.root
         hubgraph = self.hubgraph.snapshot()
         

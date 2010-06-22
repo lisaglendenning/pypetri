@@ -1,0 +1,31 @@
+strict digraph  {
+	"B.yellow2red"	 [shape=box];
+	"B.red"	 [shape=ellipse];
+	"B.yellow2red" -> "B.red";
+	start	 [shape=ellipse];
+	"B.yellow2red" -> start;
+	"A.red2green"	 [shape=box];
+	start -> "A.red2green";
+	"B.red2green"	 [shape=box];
+	start -> "B.red2green";
+	"A.yellow"	 [shape=ellipse];
+	"A.yellow2red"	 [shape=box];
+	"A.yellow" -> "A.yellow2red";
+	"A.green"	 [shape=ellipse];
+	"A.red2green" -> "A.green";
+	"A.red"	 [shape=ellipse];
+	"A.red" -> "A.red2green";
+	"B.red" -> "B.red2green";
+	"B.green"	 [shape=ellipse];
+	"B.red2green" -> "B.green";
+	"A.green2yellow"	 [shape=box];
+	"A.green2yellow" -> "A.yellow";
+	"B.yellow"	 [shape=ellipse];
+	"B.yellow" -> "B.yellow2red";
+	"A.yellow2red" -> "A.red";
+	"A.yellow2red" -> start;
+	"B.green2yellow"	 [shape=box];
+	"B.green2yellow" -> "B.yellow";
+	"A.green" -> "A.green2yellow";
+	"B.green" -> "B.green2yellow";
+}

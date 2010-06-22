@@ -137,7 +137,7 @@ class ClassicCollective(pbase.BaseCollective):
     def __init__(self, declarations=Declarations, **kwargs):
         super(ClassicCollective, self).__init__(declarations=declarations, **kwargs)
 
-    def connect(self, hubs, capacity=1):
+    def create_arc(self, hubs, capacity=1):
         names = [h.name for h in hubs]
         domains = [h.__class__ for h in hubs]
         name = self.ARC_TOKEN.join(names)
@@ -147,7 +147,7 @@ class ClassicCollective(pbase.BaseCollective):
                       self.declarations.Relation(name=arc.name, domains=(arc.__class__, domains[1])),]
         for i in xrange(len(hubs)):
             hubs[i].add(connectors[i])
-        super(ClassicCollective, self).connect(arc, connectors)
+        self.connect(arc, connectors)
     
 #############################################################################
 #############################################################################

@@ -26,11 +26,11 @@ class BaseRelation(phub.Connector):
             raise TypeError(self, other)
         super(BaseRelation, self).bind(other)
     
-    @ trellis.modifier
+    @trellis.modifier
     def push(self, marking):
         self.superior.push(marking)
 
-    @ trellis.modifier
+    @trellis.modifier
     def pull(self, marking):
         self.superior.pull(marking)
         
