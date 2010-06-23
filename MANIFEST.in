@@ -1,0 +1,8 @@
+global-exclude *.pyc
+
+include LICENSE.txt
+include README.txt
+include setup.py
+include paver-minilib.zip
+include pavement.ini
+include pavement.py
