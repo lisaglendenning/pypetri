@@ -2,7 +2,6 @@
 !.gitignore
 *.pyc
 *.zip
-/build
 /dist
 /setup.py
 
