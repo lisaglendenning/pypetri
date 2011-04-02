@@ -1,3 +1,5 @@
+# @copyright
+# @license
 
 import examples.simple as simple
 

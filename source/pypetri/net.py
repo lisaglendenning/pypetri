@@ -1,5 +1,7 @@
+# @copyright
+# @license
 
-import pypetri.trellis
+import pypetri.trellis as trellis
 import pypetri.hub
 
 #############################################################################
@@ -7,7 +9,7 @@ import pypetri.hub
 
 class Relation(pypetri.hub.Connector):
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def connect(self, other):
         if not issubclass(self.domains[0], other.domains[0]):
             raise TypeError(other)
@@ -15,7 +17,7 @@ class Relation(pypetri.hub.Connector):
             raise TypeError(other)
         super(Relation, self).connect(other)
         
-    domains = pypetri.trellis.make(tuple)
+    domains = trellis.make(tuple)
     
     def __init__(self, domains, **kwargs):
         super(Relation, self).__init__(domains=domains, **kwargs)
@@ -30,10 +32,10 @@ class Arc(pypetri.hub.Hub):
     
     Relation = Relation
     
-    domains = pypetri.trellis.make(tuple)
+    domains = trellis.make(tuple)
     
     @classmethod
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def create(cls, *args, **kwargs):
         arc = cls(*args, **kwargs)
         input = arc.Relation(domains=(arc.domains[0], cls), name=arc.NAME_IN)
@@ -45,41 +47,41 @@ class Arc(pypetri.hub.Hub):
     def __init__(self, domains, **kwargs):
         super(Arc, self).__init__(domains=domains, **kwargs)
     
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def input(self):
         if self.NAME_IN in self.inferiors:
             return self.inferiors[self.NAME_IN]
         else:
             return None
     
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def output(self):
         if self.NAME_OUT in self.inferiors:
             return self.inferiors[self.NAME_OUT]
         else:
             return None
     
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def source(self):
         input = self.input
         if input is not None and input.connected:
             return input.peer.superior
         return None    
 
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def sink(self):
         output = self.output
         if output is not None and output.connected:
             return output.peer.superior
         return None
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def push(self, marking):
         if not self.sink:
             raise RuntimeError(marking)
         return self.sink.push(marking)
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def pull(self, marking):
         if not self.source:
             raise RuntimeError(marking)
@@ -98,10 +100,10 @@ class Vertex(pypetri.hub.Hub):
     
     def __init__(self, *args, **kwargs):
         super(Vertex, self).__init__(*args, **kwargs)
-        self.inputs = pypetri.trellis.Set()
-        self.outputs = pypetri.trellis.Set()
+        self.inputs = trellis.Set()
+        self.outputs = trellis.Set()
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def add(self, inferior):
         if not isinstance(inferior, self.Relation):
             raise TypeError(inferior)
@@ -110,7 +112,7 @@ class Vertex(pypetri.hub.Hub):
             raise TypeError(inferior)
         return super(Vertex, self).add(inferior)
     
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def classify(self):
         changes = self.inferiors.added
         if changes:
@@ -133,7 +135,7 @@ class Vertex(pypetri.hub.Hub):
 
 class Condition(Vertex):
     
-    marking = pypetri.trellis.attr(None)
+    marking = trellis.attr(None)
     
         
 #############################################################################
@@ -152,10 +154,10 @@ class Transition(Vertex):
 #############################################################################
 #############################################################################
 
-class Marking(pypetri.trellis.Component):
+class Marking(trellis.Component):
     """Mapping of a hub to some tokens. """
     
-    hub = pypetri.trellis.make(None)
+    hub = trellis.make(None)
 
     def push(self, other):
         pass
@@ -192,7 +194,7 @@ class Network(pypetri.hub.Hub):
 #        super(Network, self).__init__(**kwargs)
 #        self.roles = {}
 #        for role in self.Roles:
-#            self.roles[role] = pypetri.trellis.Set()
+#            self.roles[role] = trellis.Set()
 #    
 #    def is_actor(self, uid, role):
 #        hub = self.find(uid)
@@ -217,7 +219,7 @@ class Network(pypetri.hub.Hub):
 #                return actors
 #        raise KeyError(self, role)
 #    
-#    @pypetri.trellis.maintain
+#    @trellis.maintain
 #    def classify(self):
 #        changes = self.inferiors.added
 #        if changes:
@@ -256,12 +258,12 @@ class Network(pypetri.hub.Hub):
                 return False
         return True    
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def step(self, events):
         for event in events:
             self.trigger(event)
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def trigger(self, input):
         output = input.fire()
         for marking in input.markings:

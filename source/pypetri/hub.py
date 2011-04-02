@@ -1,21 +1,23 @@
+# @copyright
+# @license
 
-import pypetri.trellis
+import pypetri.trellis as trellis
 
 #############################################################################
 #############################################################################
 
-class Namable(pypetri.trellis.Component):
+class Namable(trellis.Component):
 
     SUB_TOKEN = '.'
     
-    name = pypetri.trellis.make(str)
-    superior = pypetri.trellis.attr(None)
+    name = trellis.make(str)
+    superior = trellis.attr(None)
     
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def uid(self):
         return self.compose()
     
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def superiors(self):
         if self.superior:
             return tuple([self.superior] + list(self.superior.superiors))
@@ -48,16 +50,16 @@ class Namable(pypetri.trellis.Component):
 
 class Connector(Namable):
 
-    peer = pypetri.trellis.attr(None)
+    peer = trellis.attr(None)
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def connect(self, other):
         if self.connected or other.connected:
             raise RuntimeError((self, other))
         self.peer = other
         other.peer = self
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def disconnect(self):
         if not self.connected:
             raise RuntimeError(self)
@@ -67,7 +69,7 @@ class Connector(Namable):
         self.peer = None
         peer.peer = None
         
-    @pypetri.trellis.maintain
+    @trellis.maintain
     def connected(self):
         return self.peer is not None
         
@@ -78,7 +80,7 @@ class Hub(Namable):
 
     def __init__(self, **kwargs):
         super(Hub, self).__init__(**kwargs)
-        self.inferiors = pypetri.trellis.Dict()
+        self.inferiors = trellis.Dict()
     
     def is_superior(self, uid):
         return uid.startswith(self.uid)
@@ -114,7 +116,7 @@ class Hub(Namable):
 #        names = self.root.decompose(uid)
 #        return self.root.find(*names)
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def add(self, inferior):
         name = str(inferior.name)
         if name in self.inferiors:
@@ -122,7 +124,7 @@ class Hub(Namable):
         self.inferiors[name] = inferior
         inferior.superior = self
 
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def remove(self, inferior):
         name = str(inferior.name)
         if name not in self.inferiors:
@@ -138,7 +140,7 @@ class Hub(Namable):
     
     # TODO: inefficient :-(
     # TODO: is this function necessary?
-#    @pypetri.trellis.maintain
+#    @trellis.maintain
 #    def peerings(self):
 #        peerings = { }
 #        for inferior in self.inferiors.itervalues():

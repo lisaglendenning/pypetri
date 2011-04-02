@@ -1,9 +1,7 @@
+
 import networkx as nx
 
-import warnings
-warnings.simplefilter("ignore", DeprecationWarning)
-
-from peak.events import trellis
+import pypetri.trellis as trellis
 
 #############################################################################
 #############################################################################

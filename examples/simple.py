@@ -1,5 +1,7 @@
+# @copyright
+# @license
 
-import pypetri.trellis
+import pypetri.trellis as trellis
 import pypetri.net
 
 #############################################################################
@@ -7,7 +9,7 @@ import pypetri.net
 
 class SimpleMarking(pypetri.net.Marking):
 
-    count = pypetri.trellis.attr(0)
+    count = trellis.attr(0)
 
     def push(self, other):
         self.count += other.count
@@ -26,7 +28,7 @@ class SimpleMarking(pypetri.net.Marking):
 
 class SimpleArc(pypetri.net.Arc):
     
-    capacity = pypetri.trellis.make(int)
+    capacity = trellis.make(int)
 
     def __init__(self, capacity=1, **kwargs):
         super(SimpleArc, self).__init__(capacity=capacity, **kwargs)
@@ -85,11 +87,11 @@ class SimpleCondition(pypetri.net.Condition):
         marking = SimpleMarking(hub=self)
         super(SimpleCondition, self).__init__(marking=marking, **kwargs)
 
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def push(self, other):
         self.marking.push(other)
     
-    @pypetri.trellis.modifier
+    @trellis.modifier
     def pull(self, other):
         self.marking.pull(other)
             
