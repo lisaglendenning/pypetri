@@ -87,18 +87,7 @@ class Hub(Namable):
     
     def is_inferior(self, uid):
         return self.uid.startswith(uid)
-    
-#    def decompose(self, prefix, *names):
-#        names = name.rsplit(self.SCOPE_TOKEN, 1)
-#        if self.superior is not None:
-#            names = self.superior.decompose(name)
-#        else:
-#            names = name.split(self.SCOPE_TOKEN, 1)
-#            if self.name:
-#                index = names.index(self.name)
-#                names = names[index+1:]
-#        return names
-    
+
     def find(self, name):
         names = name.split(self.SUB_TOKEN, 1)
         next = names[0]
@@ -110,12 +99,6 @@ class Hub(Namable):
         else:
             return inferior
 
-#    def get(self, uid):
-#        if uid == self.name:
-#            return self
-#        names = self.root.decompose(uid)
-#        return self.root.find(*names)
-    
     @trellis.modifier
     def add(self, inferior):
         name = str(inferior.name)
@@ -138,25 +121,5 @@ class Hub(Namable):
             raise ValueError(inferior)
         return inferior.peer
     
-    # TODO: inefficient :-(
-    # TODO: is this function necessary?
-#    @trellis.maintain
-#    def peerings(self):
-#        peerings = { }
-#        for inferior in self.inferiors.itervalues():
-#            if isinstance(inferior, Hub):
-#                for p, path in inferior.peerings.iteritems():
-#                    if path and self.is_superior(path[1]):
-#                        continue
-#                    peerings[p] = path
-#            else:
-#                peer = inferior.peer
-#                path = None
-#                if peer:
-#                    assert peer.superior is not None
-#                    path = peer.uid, peer.superior.uid
-#                peerings[inferior.uid] = path
-#        return peerings
-
 #############################################################################
 #############################################################################

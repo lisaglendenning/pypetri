@@ -184,76 +184,23 @@ class Event(object):
 #############################################################################
 
 class Network(pypetri.hub.Hub):
-#
-#    Roles = { Condition: Condition,
-#              Transition: Transition,
-#              Arc: Arc,
-#            }
-#    
-#    def __init__(self, **kwargs):
-#        super(Network, self).__init__(**kwargs)
-#        self.roles = {}
-#        for role in self.Roles:
-#            self.roles[role] = trellis.Set()
-#    
-#    def is_actor(self, uid, role):
-#        hub = self.find(uid)
-#        name = hub.name
-#        for r in self.roles:
-#            if name in self.roles[r]:
-#                if issubclass(r, role):
-#                    return True
-#        for inferior in self.inferiors.itervalues():
-#            if isinstance(inferior, Network):
-#                if inferior.is_actor(uid, role):
-#                    return True
-#        return False
-#    
-#    def actors(self, role):
-#        for r in self.roles:
-#            if issubclass(r, role):
-#                actors = set([self.inferiors[name].uid for name in self.roles[r]])
-#                for inferior in self.inferiors.itervalues():
-#                    if isinstance(inferior, Network):
-#                        actors.update(inferior.actors(role))
-#                return actors
-#        raise KeyError(self, role)
-#    
-#    @trellis.maintain
-#    def classify(self):
-#        changes = self.inferiors.added
-#        if changes:
-#            for inferior in changes.itervalues():
-#                for role, cls in self.Roles.iteritems():
-#                    if isinstance(inferior, cls):
-#                        self.roles[role].add(inferior.name)
-#                        break
-#        changes = self.inferiors.deleted
-#        if changes:
-#            for inferior in changes.itervalues():
-#                for role, cls in self.Roles.iteritems():
-#                    if isinstance(inferior, cls):
-#                        self.roles[role].remove(inferior.name)
-#                        break
 
     def disjoint(self, events):
         # find shared input conditions
         inputs = { }
         for event in events:
-            for marking in event.markings.itervalues():
+            for marking in event.markings:
                 arc = marking.hub
-                path = arc.traverse(0)
-                if path is None:
-                    raise ValueError(arc)
-                uid = path[1]
-                if self.is_actor(uid, self.declarations.Condition):
-                    if uid not in inputs:
-                        inputs[uid] = []
-                    inputs[uid].append(marking)
+                source = arc.source
+                if source.uid not in inputs:
+                    inputs[source.uid] = []
+                inputs[source.uid].append(marking)
         for uid, markings in inputs.iteritems():
             if len(markings) < 2:
                 continue
-            superset = self.marking(uid)
+            if self.is_superior(uid):
+                uid = uid.split(self.SUB_TOKEN, 1)[1]
+            superset = self.find(uid).marking
             if not superset.disjoint(markings):
                 return False
         return True    
