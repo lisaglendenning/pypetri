@@ -1,38 +1,37 @@
 # @copyright
 # @license
 
+import collections
+
 import pypetri.trellis as trellis
 
 #############################################################################
 #############################################################################
 
-class Namable(trellis.Component):
+class Namespace(trellis.Component):
 
     SUB_TOKEN = '.'
     
     name = trellis.make(str)
-    superior = trellis.attr(None)
+    domain = trellis.attr(None)
     
     @trellis.maintain
     def uid(self):
-        return self.compose()
-    
-    @trellis.maintain
-    def superiors(self):
-        if self.superior:
-            return tuple([self.superior] + list(self.superior.superiors))
-        return tuple()
-    
-    root = property(lambda self: self.superiors[-1] if self.superiors else self)
-    
-    def compose(self):
         name = str(self.name)
-        if self.superior is not None:
-            super = self.superior.compose()
+        if self.domain is not None:
+            super = self.domain.uid
             if super:
-                name = self.superior.SUB_TOKEN.join((super, name))
+                name = self.domain.SUB_TOKEN.join((super, name))
         return name
     
+    @trellis.maintain
+    def enclosures(self):
+        if self.domain:
+            return tuple([self.domain] + list(self.domain.enclosures))
+        return tuple()
+    
+    top = property(lambda self: self.enclosures[-1] if self.enclosures else self)
+
     def __str__(self):
         text = "<%s %s>" \
                % (self.__class__.__name__, 
@@ -40,15 +39,15 @@ class Namable(trellis.Component):
         return text
         
     def __repr__(self):
-        text = "<%s name:%r, superior:%r>" \
+        text = "<%s name:%r, domain:%r>" \
                % (self.__class__.__name__, 
-                  self.name, self.superior)
+                  self.name, self.domain)
         return text
     
 #############################################################################
 #############################################################################
 
-class Connector(Namable):
+class Connector(Namespace):
 
     peer = trellis.attr(None)
     
@@ -76,50 +75,47 @@ class Connector(Namable):
 #############################################################################
 #############################################################################
 
-class Hub(Namable):
+class Composer(Namespace, collections.Mapping):
 
     def __init__(self, **kwargs):
-        super(Hub, self).__init__(**kwargs)
-        self.inferiors = trellis.Dict()
+        super(Composer, self).__init__(**kwargs)
+        self.contains = trellis.Dict()
     
-    def is_superior(self, uid):
-        return uid.startswith(self.uid)
-    
-    def is_inferior(self, uid):
-        return self.uid.startswith(uid)
+    def __getitem__(self, name):
+        return self.contains[name]
 
     def find(self, name):
         names = name.split(self.SUB_TOKEN, 1)
         next = names[0]
-        if next not in self.inferiors:
+        if next not in self:
             raise KeyError(next)
-        inferior = self.inferiors[next]
+        contained = self.contains[next]
         if len(names) > 1:
-            return inferior.find(names[1])
+            return contained.find(names[1])
         else:
-            return inferior
+            return contained
 
     @trellis.modifier
-    def add(self, inferior):
-        name = str(inferior.name)
-        if name in self.inferiors:
-            raise ValueError("Non-unique inferior name: %s" % inferior)
-        self.inferiors[name] = inferior
-        inferior.superior = self
+    def add(self, contained):
+        name = str(contained.name)
+        if name in self:
+            raise ValueError("Non-unique component name: %s" % contained)
+        self.contains[name] = contained
+        contained.domain = self
 
     @trellis.modifier
-    def remove(self, inferior):
-        name = str(inferior.name)
-        if name not in self.inferiors:
-            raise ValueError("Not an inferior: %s" % inferior)
-        del self.inferiors[name]
-        inferior.superior = None
+    def remove(self, contained):
+        name = str(contained.name)
+        if name not in self:
+            raise ValueError("Not contained: %s" % contained)
+        del self.contains[name]
+        contained.domain = None
     
     def traverse(self, name):
-        inferior = self.find(name)
-        if not isinstance(inferior, Connector):
-            raise ValueError(inferior)
-        return inferior.peer
+        contained = self.find(name)
+        if not isinstance(contained, Connector):
+            raise TypeError(contained)
+        return contained.peer
     
 #############################################################################
 #############################################################################

@@ -80,3 +80,5 @@ class TwoWayIntersection(simple.SimpleNetwork):
             red.marking.count = 1
         
         return intersect
+
+create = TwoWayIntersection.create
