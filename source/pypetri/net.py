@@ -184,6 +184,10 @@ class Event(object):
 #############################################################################
 
 class Network(pypetri.hub.Hub):
+    
+    Arc = Arc
+    Condition = Condition
+    Transition = Transition
 
     def disjoint(self, events):
         # find shared input conditions

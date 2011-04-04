@@ -15,13 +15,14 @@ class Graph(trellis.Component):
     
     Graph = nx.Graph
     
+    graph = trellis.attr(None)
     changes = trellis.todo(list)
     to_change = changes.future
 
-    def __init__(self, *args, **kwargs):
-        trellis.Component.__init__(self)
-        graph = self.Graph(*args, **kwargs)
-        self.graph = graph
+    def __init__(self, graph=None, *args, **kwargs):
+        if graph is None:
+            graph = self.Graph(*args, **kwargs)
+        super(Graph, self).__init__(graph=graph)
 
     # proxy
     def __getattr__(self, attr):

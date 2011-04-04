@@ -1,23 +1,63 @@
-
-import warnings
-warnings.simplefilter("ignore", DeprecationWarning)
-
-from peak.events import trellis
+# @copyright
+# @license
 
 import networkx as nx
 
-import pypetri.base as pbase
+import pypetri.net as pnet
 import pypetri.hub as phub
 
+import pypetri.graph.hub
+
 #############################################################################
 #############################################################################
 
-class CollectiveGraph(trellis.Component):
+Graph = nx.MultiDiGraph
+    
+class NetworkGraph(pypetri.graph.hub.HubGraph):
 
-    hubgraph = trellis.attr(None)
-
-    def __init__(self, hubgraph, **kwargs):
-        super(CollectiveGraph, self).__init__(hubgraph=hubgraph, **kwargs)
+    
+    def snapshot(self):
+        graph, subgraphs = super(NetworkGraph, self).snapshot()
+        
+        netgraph = Graph(name=self.name)
+        
+        Arc = self.hub.Arc
+        Condition = self.hub.Condition
+        Transition = self.hub.Transition
+        
+        arcs = set()
+        conditions = set()
+        transitions = set()
+        hubs = set()
+        for hub in self.inferiors.itervalues():
+            if isinstance(hub, Arc):
+                arcs.add(hub)
+            elif isinstance(hub, Condition):
+                conditions.add(hub)
+            elif isinstance(hub, Transition):
+                transitions.add(hub)
+            else:
+                hubs.add(hub)
+        
+        for nodes, type in ((conditions, 'Condition',),
+                            (transitions, 'Transition'),
+                            (hubs, 'Hub'),):
+            for hub in nodes:
+                netgraph.add_node(hub.uid, name=hub.name)
+        
+        for arc in arcs:
+            nodes = [arc.source, arc.sink]
+            assert None not in nodes
+            for i in xrange(len(nodes)):
+                while nodes[i].superior is not self.hub:
+                    assert nodes[i].superior is not None
+                    nodes[i] = nodes[i].superior
+                assert nodes[i].uid in netgraph
+            netgraph.add_edge(nodes[0].uid,
+                              nodes[1].uid,
+                              name=arc.name)
+        
+        return netgraph, subgraphs
 
     def dotgraph(self):
         root = self.hubgraph.hub.root

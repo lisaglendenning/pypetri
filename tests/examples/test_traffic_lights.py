@@ -11,14 +11,14 @@ import examples.traffic_lights as traffic_lights
 class TestCaseTrafficLights(unittest.TestCase):
     
     def test_example(self):
-        network = traffic_lights.create()
-        start = network.find(traffic_lights.START)
+        network = traffic_lights.TwoWayIntersection.create()
+        start = network.find(network.START)
         
-        for light in traffic_lights.LIGHTS:
-            lightnet = network.find(light)
+        for l in network.LIGHTS:
+            light = network.find(l)
             
-            for t in traffic_lights.TRANSITIONS:
-                trans = lightnet.find(t)
+            for t in light.TRANSITIONS:
+                trans = light.find(t)
                 enabled = [e for e in trans.enabled()]
                 self.assertEqual(len(enabled), 1)
                 network.step(enabled)

@@ -1,8 +1,5 @@
 
-import warnings
-warnings.simplefilter("ignore", DeprecationWarning)
-
-from peak.events import trellis
+import pypetri.trellis as trellis
 
 import pypetri.hub as phub
 import pypetri.graph.graph as pgraph
@@ -11,97 +8,83 @@ import pypetri.graph.graph as pgraph
 #############################################################################
 
 class HubGraph(trellis.Component):
-
+    
     hub = trellis.make(None)
-    links = trellis.make(None)
-    inferiors = trellis.make(None)
+    graph = trellis.make(None)
     
-    def __init__(self, hub, **kwargs):
-        if 'links' not in kwargs:
-            kwargs['links'] = pgraph.Graph()
-        if 'inferiors' not in kwargs:
-            kwargs['inferiors'] = {}
-        super(HubGraph, self).__init__(hub=hub, **kwargs)
-        self.links.add_node(self.hub.uid)
+    Graph = pgraph.Graph
     
+    def __init__(self, hub, graph=None, *args, **kwargs):
+        if graph is None:
+            graph = self.Graph(*args, **kwargs)
+        super(HubGraph, self).__init__(hub=hub)
+        self.graph = graph
+        self.subgraphs = trellis.Dict()
+    
+    name = property(lambda self: self.hub.name)
+    inferiors = property(lambda self: self.hub.inferiors)
+    
+    @trellis.maintain
+    def recurse(self):
+        hubs = set([k for k,v in self.inferiors.iteritems() if isinstance(v, phub.Hub)])
+        graphs = set(self.subgraphs.keys())
+        added = hubs - graphs
+        removed = graphs - hubs
+        for u in added:
+            v = self.inferiors[v]
+            self.subgraphs[u] = self.__class__(v)
+        for u in removed:
+            del self.subgraphs[u]
+                  
+    @trellis.maintain
+    def represent(self):
+        changes = self.subgraphs.added
+        if changes:
+            for u in changes:
+                if not self.graph.has_node(u):
+                    self.graph.add_node(u)
+        changes = self.subgraphs.deleted
+        if changes:
+            for u in changes:
+                if self.graph.has_node(u):
+                    self.graph.remove_node(u)
+        
+          
     @trellis.maintain
     def associate(self):
-        root = self.hub.root
-        for inferior in self.hub.inferiors.itervalues():
-            if not self.links.has_node(inferior.uid):
-                self.links.add_node(inferior.uid)
-            edge = (self.hub.uid, inferior.uid)
-            if not self.links.has_edge(*edge):
-                self.links.add_edge(*edge)
-            if isinstance(inferior, phub.Hub) and not inferior.name in self.inferiors:
-                self.inferiors[inferior.name] = HubGraph(inferior)
-        nbunch = []
-        for u in self.links.nodes_iter():
-            try:
-                root.get(u)
-            except KeyError:
-                nbunch.append(u)
-        self.links.remove_nodes_from(nbunch)
-        for name in self.inferiors:
-            if name not in self.hub.inferiors:
-                del self.inferiors[name]
+        for u, sub in self.subgraphs.iteritems():
+            if not self.graph.has_node(u):
+                continue
+            peers = set()
+            for conn in sub.inferiors.itervalues():
+                if isinstance(conn, phub.Hub):
+                    continue
+                if not conn.connected:
+                    continue
+                peer = conn.peer.superior
+                if peer is None:
+                    continue
+                if peer.superior is not self.hub:
+                    continue
+                if peer.name not in self.graph:
+                    continue
+                peers.add(peer.name)
+            neighbors = set(self.graph.neighbors(u))
+            added = peers - neighbors
+            removed = neighbors - peers
+            for v in added:
+                self.graph.add_edge(u, v)
+            for v in removed:
+                self.graph.remove_edge(u, v)
 
-    @trellis.maintain
-    def reassociate(self):
-        hubs = [h for h in self.hub.inferiors.itervalues() if isinstance(h, phub.Hub)]
-        for hub in hubs:
-            for c, path in hub.peerings.iteritems():
-                if not self.links.has_node(c):
-                    self.links.add_node(c)
-                if path:
-                    p = path[0]
-                    if not self.links.has_node(p):
-                        self.links.add_node(p)
-                    self.peered(c, p)
-        nbunch = []
-        ebunch = []
-        root = self.hub.root
-        for u in self.links.nodes_iter():
-            try:
-                uobj = root.get(u)
-            except KeyError:
-                nbunch.append(u)
-            else:
-                for v in self.links.neighbors_iter(u):
-                    if uobj.is_super(v):
-                        continue
-                    if isinstance(uobj, phub.Connector):
-                        if uobj.is_peer(v):
-                            continue
-                    else:
-                        if v in uobj.peerings:
-                            continue
-                        try:
-                            vobj = root.get(v)
-                        except KeyError:
-                            continue
-                        else:
-                            if isinstance(vobj, phub.Hub):
-                                continue
-                    ebunch.append((u,v))
-        self.links.remove_edges_from(ebunch)
-        self.links.remove_nodes_from(nbunch)
-    
-    def peered(self, c1, c2):
-        edge = (c1, c2)
-        if not self.links.has_edge(*edge):
-            self.links.add_edge(*edge)    
-    
     def snapshot(self):
-        subgraphs = {}
-        for name, inferior in self.inferiors.iteritems():
-            subgraphs[name] = inferior.snapshot()
+        graph = self.graph.snapshot()
         
-        graph = self.links.snapshot()
-        for name, subgraph in subgraphs.iteritems():
-            graph.add_nodes_from(subgraph.nodes_iter()) 
-            graph.add_edges_from(subgraph.edges_iter())
-        return graph
+        subgraphs = {}
+        for name, sub in self.subgraphs.iteritems():
+            subgraphs[name] = sub.snapshot()
+        
+        return graph, subgraphs
 
 #############################################################################
 #############################################################################

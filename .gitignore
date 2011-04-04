@@ -2,6 +2,7 @@
 !.gitignore
 *.pyc
 *.zip
+/MANIFEST.in
 /dist
 /setup.py
 
