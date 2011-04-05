@@ -8,12 +8,23 @@ import pypetri.trellis as trellis
 #############################################################################
 #############################################################################
 
-class Namespace(trellis.Component):
+class Namespace(collections.Hashable, trellis.Component):
 
     SUB_TOKEN = '.'
     
     name = trellis.make(str)
     domain = trellis.attr(None)
+    
+    def __hash__(self):
+        return hash(self.name)
+    
+    def __cmp__(self, other):
+        n1 = self.name
+        if other is None:
+            n2 = ''
+        else:
+            n2 = other.name
+        return cmp(n1, n2)
     
     @trellis.maintain
     def uid(self):
@@ -75,7 +86,7 @@ class Connector(Namespace):
 #############################################################################
 #############################################################################
 
-class Composer(Namespace, collections.Mapping):
+class Composer(collections.Mapping, Namespace):
 
     def __init__(self, **kwargs):
         super(Composer, self).__init__(**kwargs)
@@ -83,6 +94,13 @@ class Composer(Namespace, collections.Mapping):
     
     def __getitem__(self, name):
         return self.contains[name]
+    
+    def __len__(self):
+        return len(self.contains)
+    
+    def __iter__(self):
+        for k in self.contains:
+            yield k
 
     def find(self, name):
         names = name.split(self.SUB_TOKEN, 1)
@@ -110,12 +128,6 @@ class Composer(Namespace, collections.Mapping):
             raise ValueError("Not contained: %s" % contained)
         del self.contains[name]
         contained.domain = None
-    
-    def traverse(self, name):
-        contained = self.find(name)
-        if not isinstance(contained, Connector):
-            raise TypeError(contained)
-        return contained.peer
-    
+
 #############################################################################
 #############################################################################

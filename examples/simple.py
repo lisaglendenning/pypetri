@@ -38,7 +38,7 @@ class SimpleArc(pypetri.net.Arc):
             return
         source = self.source.marking
         if source.count >= self.capacity:
-            marks = SimpleMarking(hub=self, count=self.capacity)
+            marks = SimpleMarking(marks=self, count=self.capacity)
             yield marks
         return
 
@@ -52,7 +52,7 @@ class SimpleTransition(pypetri.net.Transition):
         for input in self.inputs:
             if not input.connected:
                 continue
-            arc = input.peer.superior
+            arc = input.peer.domain
             arciter = arc.enabled()
             try:
                 event.markings.add(arciter.next())
@@ -68,10 +68,10 @@ class SimpleTransition(pypetri.net.Transition):
         for output in self.outputs:
             if not output.connected:
                 continue
-            arc = output.peer.superior
+            arc = output.peer.domain
             if available < arc.capacity:
                 raise RuntimeError(event)
-            marks = SimpleMarking(hub=arc, count=arc.capacity)
+            marks = SimpleMarking(marks=arc, count=arc.capacity)
             available -= marks.count
             out.markings.add(marks)
         if available != 0:
@@ -84,7 +84,7 @@ class SimpleTransition(pypetri.net.Transition):
 class SimpleCondition(pypetri.net.Condition):
     
     def __init__(self, **kwargs):
-        marking = SimpleMarking(hub=self)
+        marking = SimpleMarking(marks=self)
         super(SimpleCondition, self).__init__(marking=marking, **kwargs)
 
     @trellis.modifier
@@ -100,20 +100,28 @@ class SimpleCondition(pypetri.net.Condition):
 
 class SimpleNetwork(pypetri.net.Network):
     
-    ARC_TOKEN = "->"
+    ARC_TOKEN = '->'
 
     Arc = SimpleArc
     Transition = SimpleTransition
     Condition = SimpleCondition
-    
+
     def connect(self, source, sink, capacity=1):
         names = (source.uid, sink.uid,)
-        domains = (source.__class__, sink.__class__,)
+        types = []
+        for cls in source.__class__, sink.__class__:
+            for t in self.Condition, self.Transition:
+                if issubclass(cls, t):
+                    types.append(t)
+                    break
+        types = tuple(types)
         name = self.ARC_TOKEN.join(names)
-        arc = self.Arc.create(name=name, domains=domains, capacity=capacity)
+        arc = self.Arc.create(name=name, 
+                              types=types, 
+                              capacity=capacity)
         self.add(arc)
-        connectors = [arc.Relation(name=arc.name, domains=(domains[0], arc.__class__)),
-                      arc.Relation(name=arc.name, domains=(arc.__class__, domains[1])),]
+        connectors = [arc.Relation(name=arc.name, types=(types[0], self.Arc)),
+                      arc.Relation(name=arc.name, types=(self.Arc, types[1])),]
         source.add(connectors[0])
         sink.add(connectors[1])
         arc.input.connect(connectors[0])
