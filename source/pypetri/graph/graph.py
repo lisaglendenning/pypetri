@@ -1,3 +1,7 @@
+# @copyright
+# @license
+
+import collections
 
 import networkx as nx
 
@@ -6,7 +10,7 @@ import pypetri.trellis as trellis
 #############################################################################
 #############################################################################
 
-class Graph(trellis.Component):
+class Graph(collections.Mapping, trellis.Component):
 
     CHANGE_ACTIONS = range(3)
     ADD_ACTION, REMOVE_ACTION, CLEAR_ACTION = CHANGE_ACTIONS
@@ -23,19 +27,22 @@ class Graph(trellis.Component):
         if graph is None:
             graph = self.Graph(*args, **kwargs)
         super(Graph, self).__init__(graph=graph)
+        for k in dir(graph):
+            if not hasattr(self, k):
+                setattr(self, k, getattr(graph, k))
 
-    # proxy
-    def __getattr__(self, attr):
-        if hasattr(self, 'graph') \
-            and self.graph is not None \
-            and not attr.startswith('_'):
-            return getattr(self.graph, attr)
-        else:
-            raise AttributeError(self, attr)
+    def __getitem__(self, key):
+        return self.graph[key]
+    
+    def __iter__(self):
+        return iter(self.graph)
+    
+    def __len__(self):
+        return len(self.graph)
     
     @trellis.modifier
-    def add_node(self, n):
-        change = (self.ADD_ACTION, self.NODE_TYPE, [n])
+    def add_node(self, *args, **kwargs):
+        change = (self.ADD_ACTION, self.NODE_TYPE, args, kwargs,)
         self.to_change.append(change)
         
     @trellis.modifier
@@ -44,8 +51,8 @@ class Graph(trellis.Component):
             self.add_node(n)
         
     @trellis.modifier
-    def remove_node(self, n):
-        change = (self.REMOVE_ACTION, self.NODE_TYPE, [n])
+    def remove_node(self, *args, **kwargs):
+        change = (self.REMOVE_ACTION, self.NODE_TYPE, args, kwargs,)
         self.to_change.append(change)
         
     @trellis.modifier
@@ -54,8 +61,8 @@ class Graph(trellis.Component):
             self.remove_node(n)
             
     @trellis.modifier
-    def add_edge(self, u, v):
-        change = (self.ADD_ACTION, self.EDGE_TYPE, [u, v])
+    def add_edge(self, *args, **kwargs):
+        change = (self.ADD_ACTION, self.EDGE_TYPE, args, kwargs,)
         self.to_change.append(change)
         
     @trellis.modifier
@@ -64,8 +71,8 @@ class Graph(trellis.Component):
             self.add_edge(*e)
             
     @trellis.modifier
-    def remove_edge(self, u, v):
-        change = (self.REMOVE_ACTION, self.EDGE_TYPE, [u, v])
+    def remove_edge(self, *args, **kwargs):
+        change = (self.REMOVE_ACTION, self.EDGE_TYPE, args, kwargs,)
         self.to_change.append(change)
         
     @trellis.modifier
@@ -93,7 +100,7 @@ class Graph(trellis.Component):
         
     @trellis.modifier
     def clear(self):
-        change = tuple([self.CLEAR_ACTION])
+        change = (self.CLEAR_ACTION,)
         self.to_change.append(change)
 
     @trellis.maintain
@@ -108,47 +115,47 @@ class Graph(trellis.Component):
         undos = []
         action = change[0]
         if action == self.ADD_ACTION:
-            type = change[1]
-            args = change[2]
+            type, args, kwargs = change[1:]
             if type == self.NODE_TYPE:
                 if not graph.has_node(args[0]):
-                    undo = tuple([self.REMOVE_ACTION] + list(change[1:]))
+                    undo = (self.REMOVE_ACTION, type, args,)
                     undos.append(undo)
-                    graph.add_node(*args)
-            if type == self.EDGE_TYPE:
+                    graph.add_node(*args, **kwargs)
+            elif type == self.EDGE_TYPE:
                 if not graph.has_edge(*args[0:2]):
-                    undo = tuple([self.REMOVE_ACTION] + list(change[1:]))
+                    undo = (self.REMOVE_ACTION, type, args,)
                     undos.append(undo)
-                    graph.add_edge(*args)
+                    graph.add_edge(*args, **kwargs)
         elif action == self.REMOVE_ACTION:
-            type = change[1]
-            args = change[2]
+            type, args, kwargs = change[1:]
             if type == self.NODE_TYPE:
                 u = args[0]
                 if graph.has_node(u):
-                    for v in graph[u]:
-                        undo = tuple([self.ADD_ACTION, self.EDGE_TYPE, [u,v]])
+                    edges = graph.edges(u, data=True)
+                    for edge in edges:
+                        undo = (self.ADD_ACTION, self.EDGE_TYPE, edge[:2], edge[2],)
                         undos.append(undo)
-                    undo = tuple([self.ADD_ACTION] + list(change[1:]))
+                    undo = (self.ADD_ACTION, type, (u,), dict(graph.node[u]),)
                     undos.append(undo)
-                    graph.remove_node(*args)
-            if type == self.EDGE_TYPE:
-                if graph.has_edge(*args[0:2]):
-                    undo = tuple([self.ADD_ACTION] + list(change[1:]))
+                    graph.remove_node(*args, **kwargs)
+            elif type == self.EDGE_TYPE:
+                u,v = args[0:2]
+                if graph.has_edge(u,v):
+                    undo = (self.ADD_ACTION, type, args, dict(graph.edge[u][v]),)
                     undos.append(undo)
-                    graph.remove_edge(*args)
+                    graph.remove_edge(*args, **kwargs)
         elif action == self.CLEAR_ACTION:
-            for n in graph.node_iter:
-                undo = tuple([self.ADD_ACTION, self.NODE_TYPE, [n]])
+            for n in graph.node_iter(data=True):
+                undo = (self.ADD_ACTION, self.NODE_TYPE, n[:1], n[-1],)
                 undos.append(undo)
-            for e in graph.edge_iter:
-                undo = tuple([self.ADD_ACTION, self.EDGE_TYPE, e])
+            for e in graph.edge_iter(data=True):
+                undo = (self.ADD_ACTION, self.EDGE_TYPE, e[:2], e[-1],)
                 undos.append(undo)
             graph.clear()
         else:
             assert False
         trellis.on_undo(self.undo, graph, undos)
-    
+
     def undo(self, graph, changes):
         for change in changes:
             self.apply(graph, change, False)
