@@ -63,21 +63,26 @@ class GraphListener(trellis.Component):
         if self.action[0] == graph.REMOVE_ACTION:
             if self.action[1] == graph.NODE_TYPE:
                 graph.remove_node(*self.action[2], **self.action[3])
+                assert not graph.has_node(self.action[2][0])
             else:
                 graph.remove_edge(*self.action[2], **self.action[3])
+                assert not graph.has_edge(*self.action[2][:2])
         else:
             if self.action[1] == graph.NODE_TYPE:
                 graph.add_node(*self.action[2], **self.action[3])
+                assert graph.has_node(self.action[2][0])
             else:
                 graph.add_edge(*self.action[2], **self.action[3])
+                assert graph.has_edge(*self.action[2][:2])
         self.action = None
     
     @trellis.maintain
     def verify(self):
-        changes = self.graph.changes
-        if changes:
-            assert len(changes) == 1
-            assert changes[0] == self.action
+        if self.graph is not None:
+            changes = self.graph.changes
+            if changes:
+                assert len(changes) == 1
+                assert changes[0] == self.action
 
 #############################################################################
 #############################################################################
@@ -89,6 +94,9 @@ class TestCaseGraph(unittest.TestCase):
         listener = GraphListener(graph)
         for i in xrange(listener.N):
             listener.step()
+        listener.graph = None
+        graph.clear()
+        self.assertEqual(len(graph), 0)
 
 #############################################################################
 #############################################################################

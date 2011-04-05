@@ -145,10 +145,10 @@ class Graph(collections.Mapping, trellis.Component):
                     undos.append(undo)
                     graph.remove_edge(*args, **kwargs)
         elif action == self.CLEAR_ACTION:
-            for n in graph.node_iter(data=True):
+            for n in graph.nodes_iter(data=True):
                 undo = (self.ADD_ACTION, self.NODE_TYPE, n[:1], n[-1],)
                 undos.append(undo)
-            for e in graph.edge_iter(data=True):
+            for e in graph.edges_iter(data=True):
                 undo = (self.ADD_ACTION, self.EDGE_TYPE, e[:2], e[-1],)
                 undos.append(undo)
             graph.clear()
