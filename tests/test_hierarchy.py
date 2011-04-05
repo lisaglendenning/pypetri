@@ -3,7 +3,7 @@
 
 import unittest
 
-import pypetri.hub
+import pypetri.hierarchy
 
 #############################################################################
 #############################################################################
@@ -11,13 +11,13 @@ import pypetri.hub
 class TestCaseHub(unittest.TestCase):
     
     def test_hub(self, N=4):
-        hubba = pypetri.hub.Hub()
-        connectors = [pypetri.hub.Connector(name=i) for i in xrange(N)]
+        top = pypetri.hierarchy.Composer()
+        connectors = [pypetri.hierarchy.Connector(name=i) for i in xrange(N)]
         for i, c in enumerate(connectors):
             self.assertEqual(c.name, i)
-            hubba.add(c)
+            top.add(c)
         for c in connectors:
-            self.assertTrue(c is hubba.find(c.uid))
+            self.assertTrue(c is top.find(c.uid))
             self.assertFalse(c.connected)
         for i in xrange(0, N, 2):
             c1 = connectors[i]
@@ -27,8 +27,6 @@ class TestCaseHub(unittest.TestCase):
             self.assertTrue(c2.connected)
             self.assertTrue(c1.peer is c2)
             self.assertTrue(c2.peer is c1)
-            self.assertTrue(hubba.traverse(c1.uid) is c2)
-            self.assertTrue(hubba.traverse(c2.uid) is c1)
         for i in xrange(0, N, 2):
             c1 = connectors[i]
             c2 = connectors[i+1]
