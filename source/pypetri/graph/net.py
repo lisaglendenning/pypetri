@@ -3,113 +3,84 @@
 
 import networkx as nx
 
+import pypetri.trellis as trellis
+
 import pypetri.net as pnet
-import pypetri.hub as phub
-
-import pypetri.graph.hub
+import pypetri.graph.graph as pgraph
 
 #############################################################################
 #############################################################################
 
-Graph = nx.MultiDiGraph
-    
-class NetworkGraph(pypetri.graph.hub.HubGraph):
+class NetworkGraph(trellis.Component):
 
+    Graph = nx.MultiDiGraph
     
-    def snapshot(self):
-        graph, subgraphs = super(NetworkGraph, self).snapshot()
-        
-        netgraph = Graph(name=self.name)
-        
-        Arc = self.hub.Arc
-        Condition = self.hub.Condition
-        Transition = self.hub.Transition
-        
+    net = trellis.make(None)
+    
+    def __init__(self, net, graph=None, *args, **kwargs):
+        if graph is None:
+            graph = self.Graph(*args, name=net.name, **kwargs)
+            graph = pgraph.Graph(graph=graph)
+        super(NetworkGraph, self).__init__(net=net)
+        self.graph = graph
+        self.subgraphs = trellis.Dict()
+    
+    @trellis.maintain
+    def recurse(self):
+        nets = set([k for k in self.net if isinstance(self.net[k], pnet.Network)])
+        graphs = set(self.subgraphs.keys())
+        added = nets - graphs
+        removed = graphs - nets
+        for u in added:
+            v = self.net[u]
+            self.subgraphs[u] = self.__class__(v)
+        for u in removed:
+            del self.subgraphs[u]
+
+    @trellis.maintain
+    def associate(self):
         arcs = set()
-        conditions = set()
-        transitions = set()
-        hubs = set()
-        for hub in self.inferiors.itervalues():
-            if isinstance(hub, Arc):
-                arcs.add(hub)
-            elif isinstance(hub, Condition):
-                conditions.add(hub)
-            elif isinstance(hub, Transition):
-                transitions.add(hub)
+        vertices = set()
+        for u,v in self.net.iteritems():
+            if isinstance(v, self.net.Arc):
+                arcs.add(u)
             else:
-                hubs.add(hub)
+                vertices.add(u)
+                
+        has = set(self.graph.nodes())
+        added = vertices - has
+        removed = has - vertices
+        self.graph.add_nodes_from(added)
+        self.graph.remove_nodes_from(removed)
         
-        for nodes, type in ((conditions, 'Condition',),
-                            (transitions, 'Transition'),
-                            (hubs, 'Hub'),):
-            for hub in nodes:
-                netgraph.add_node(hub.uid, name=hub.name)
-        
-        for arc in arcs:
+        edges = set()
+        for u in arcs:
+            arc = self.net[u]
             nodes = [arc.source, arc.sink]
-            assert None not in nodes
+            if None in nodes:
+                continue
             for i in xrange(len(nodes)):
-                while nodes[i].superior is not self.hub:
-                    assert nodes[i].superior is not None
-                    nodes[i] = nodes[i].superior
-                assert nodes[i].uid in netgraph
-            netgraph.add_edge(nodes[0].uid,
-                              nodes[1].uid,
-                              name=arc.name)
-        
-        return netgraph, subgraphs
+                while nodes[i].domain is not self.net:
+                    assert nodes[i].domain is not None
+                    nodes[i] = nodes[i].domain
+                assert (nodes[i].name in self.graph) or (nodes[i].name in added)
+            edges.add((nodes[0].name, nodes[1].name,))
 
-    def dotgraph(self):
-        root = self.hubgraph.hub.root
-        hubgraph = self.hubgraph.snapshot()
+        has = set(self.graph.edges()) 
+        added = edges - has
+        removed = has - edges
+        self.graph.add_edges_from(added)
+        self.graph.remove_edges_from(removed)
+                      
+    def snapshot(self):
+        graph = self.graph.snapshot()
         
-        # first, remove any collectives
-        nbunch = []
-        for n in hubgraph.nodes_iter():
-            obj = root.get(n)
-            if isinstance(obj, pbase.BaseCollective):
-                nbunch.append(n)
-        hubgraph.remove_nodes_from(nbunch)
+        subgraphs = {}
+        for name, sub in self.subgraphs.iteritems():
+            subgraphs[name] = sub.snapshot()
         
-        # next, fold connectors
-        nbunch = []
-        ebunch = []
-        for u in hubgraph.nodes_iter():
-            obj = root.get(u)
-            if isinstance(obj, phub.Connector):
-                nbunch.append(u)
-                hub = obj.superior.uid
-                for v in hubgraph.neighbors_iter(u):
-                    if v == hub:
-                        continue
-                    ebunch.append((hub,v))
-        hubgraph.remove_nodes_from(nbunch)
-        hubgraph.add_edges_from(ebunch)
-        
-        # now, convert to a directed graph
-        graph = nx.DiGraph()
-        
-        # add transitions, conditions, and arcs
-        for u in hubgraph.nodes_iter():
-            obj = root.get(u)
-            attrs = {}
-            if isinstance(obj, root.declarations.Condition):
-                attrs['shape'] = 'ellipse'
-            elif isinstance(obj, root.declarations.Transition):
-                attrs['shape'] = 'box'
-            elif isinstance(obj, root.declarations.Arc):
-                u = obj.traverse(0)
-                v = obj.traverse(1)
-                if u and v:
-                    u = u[1]
-                    v = v[1]
-                    graph.add_edge(u, v, attrs)
-                continue
-            else:
-                continue
-            graph.add_node(u, attrs)
-        
-        return graph
+        return graph, subgraphs
+
 
 #############################################################################
 #############################################################################
