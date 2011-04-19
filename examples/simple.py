@@ -10,123 +10,110 @@ import pypetri.net
 class SimpleMarking(pypetri.net.Marking):
 
     count = trellis.attr(0)
+    
+    def __hash__(self):
+        return hash(self.count)
+    
+    def __cmp__(self, other):
+        if isinstance(other, self.__class__):
+            return cmp(self.count, other.count)
+        return cmp(self.count, other)
 
-    def push(self, other):
-        self.count += other.count
+    def __add__(self, other):
+        sum = self.count + other.count
+        return self.__class__(count=sum)
     
-    def pull(self, other):
-        if other.count > self.count:
-            raise RuntimeError(other)
-        self.count -= other.count
+    def __sub__(self, other):
+        sum = self.count - other.count
+        if sum < 0:
+            raise ValueError(other)
+        return self.__class__(count=sum)
     
-    def disjoint(self, subs):
-        sum = reduce(lambda x,y: x.count + y.count, subs)
-        return sum <= self.count
+    def __int__(self):
+        return self.count
+    
+    def __nonzero__(self):
+        return self.count > 0
 
 #############################################################################
 #############################################################################
 
 class SimpleArc(pypetri.net.Arc):
     
-    capacity = trellis.make(int)
-
-    def __init__(self, capacity=1, **kwargs):
-        super(SimpleArc, self).__init__(capacity=capacity, **kwargs)
+    Marking = SimpleMarking
+    
+    demand = trellis.attr(None)
         
-    def enabled(self):
+    def search(self):
         if self.source is None:
             return
-        source = self.source.marking
-        if source.count >= self.capacity:
-            marks = SimpleMarking(marks=self, count=self.capacity)
-            yield marks
-        return
+        marking = self.source.marking
+        demand = self.demand
+        if marking >= demand:
+            flow = self.Flow(arc=self, marking=demand,)
+            yield flow
+            
+    def enabled(self, flow):
+        return flow.marking == self.demand
 
 #############################################################################
 #############################################################################
 
 class SimpleTransition(pypetri.net.Transition):
     
-    def enabled(self):
-        event = pypetri.net.Event(transition=self)
-        for input in self.inputs:
-            if not input.connected:
-                continue
-            arc = input.peer.domain
-            arciter = arc.enabled()
-            try:
-                event.markings.add(arciter.next())
-            except StopIteration:
-                break
-        else:
-            if len(event.markings):
-                yield event
+    @trellis.maintain
+    def outflow(self):
+        sum = 0
+        if self.outputs is not None:
+            outputs = [x.output.output for x in self.outputs if x.connected]
+            for output in outputs:
+                sum += int(output.demand)
+        return sum
     
-    def fire(self, event):
-        out = pypetri.net.Event(transition=self)
-        available = reduce(lambda x,y: x+y, [m.count for m in event.markings])
-        for output in self.outputs:
-            if not output.connected:
-                continue
-            arc = output.peer.domain
-            if available < arc.capacity:
-                raise RuntimeError(event)
-            marks = SimpleMarking(marks=arc, count=arc.capacity)
-            available -= marks.count
-            out.markings.add(marks)
-        if available != 0:
+    def enabled(self, event):
+        inflow = 0
+        for flow in event.flows:
+            inflow += int(flow.marking)
+        return inflow == self.outflow
+    
+    def __call__(self, event):
+        if not self.enabled(event):
             raise RuntimeError(event)
-        return out
+        outputs = self.Event(transition=self,)
+        outgoing = [o.output.output for o in self.outputs if o.connected]
+        for arc in outgoing:
+            output = self.Flow(arc=arc, marking=arc.demand)
+            outputs.add(output)
+        return outputs
 
 #############################################################################
 #############################################################################
   
 class SimpleCondition(pypetri.net.Condition):
+    Marking = SimpleMarking
     
-    def __init__(self, **kwargs):
-        marking = SimpleMarking(marks=self)
+    def __init__(self, marking=None, **kwargs):
+        if marking is None:
+            marking = self.Marking()
         super(SimpleCondition, self).__init__(marking=marking, **kwargs)
-
-    @trellis.modifier
-    def push(self, other):
-        self.marking.push(other)
     
-    @trellis.modifier
-    def pull(self, other):
-        self.marking.pull(other)
-            
+    count = property(lambda self: self.marking.count)
+
 #############################################################################
 #############################################################################
 
 class SimpleNetwork(pypetri.net.Network):
-    
-    ARC_TOKEN = '->'
 
     Arc = SimpleArc
     Transition = SimpleTransition
     Condition = SimpleCondition
 
-    def connect(self, source, sink, capacity=1):
-        names = (source.uid, sink.uid,)
-        types = []
-        for cls in source.__class__, sink.__class__:
-            for t in self.Condition, self.Transition:
-                if issubclass(cls, t):
-                    types.append(t)
-                    break
-        types = tuple(types)
-        name = self.ARC_TOKEN.join(names)
-        arc = self.Arc.create(name=name, 
-                              types=types, 
-                              capacity=capacity)
-        self.add(arc)
-        connectors = [arc.Relation(name=arc.name, types=(types[0], self.Arc)),
-                      arc.Relation(name=arc.name, types=(self.Arc, types[1])),]
-        source.add(connectors[0])
-        sink.add(connectors[1])
-        arc.input.connect(connectors[0])
-        arc.output.connect(connectors[1])
-        return arc
-
+    def connect(self, source, sink, demand=None, **kwargs):
+        if demand is None:
+            demand = 1
+        if isinstance(demand, int):
+            demand = self.Arc.Marking(count=demand)
+        return super(SimpleNetwork, self).connect(source, sink, demand=demand, **kwargs)
+        
 #############################################################################
 #############################################################################

@@ -9,49 +9,217 @@ import pypetri.hierarchy
 #############################################################################
 #############################################################################
 
-class Relation(pypetri.hierarchy.Connector):
-    
-    @trellis.modifier
-    def connect(self, other):
-        if not issubclass(self.types[0], other.types[0]):
-            raise TypeError(other)
-        if not issubclass(other.types[1], self.types[1]):
-            raise TypeError(other)
-        super(Relation, self).connect(other)
-        
-    types = trellis.make(tuple)
-    
-    def __init__(self, types, **kwargs):
-        super(Relation, self).__init__(types=types, **kwargs)
+instantiates = isinstance
 
+def brute(itr):
+    """Brute force search of all variable-length combinations."""
+    def recursor(itr):
+        try:
+            next = itr.next()
+        except StopIteration:
+            pass
+        else:
+            rest = recursor(itr)
+            for combo in rest:
+                for item in next:
+                    yield [item] + combo
+        finally:
+            yield []
+    for combo in recursor(itr):
+        yield combo
+
+
+def update(current, changes, filter=None):
+    if filter is None:
+        filter = lambda x: True
+    added = set([x for x in changes.added.itervalues() if filter(x)])
+    removed = current & set(changes.deleted)
+    result = (current - removed) | added
+    return result 
+    
 #############################################################################
 #############################################################################
 
-class Arc(pypetri.hierarchy.Composer):
-    
-    NAME_IN = '0'
-    NAME_OUT = '1'
-    
-    Relation = Relation
-    
-    types = trellis.make(tuple)
+class Relation(object):
+    """A relation is an ordered pair of types."""
+
+    INPUT, OUTPUT = xrange(2)
     
     @classmethod
-    @trellis.modifier
-    def create(cls, *args, **kwargs):
-        arc = cls(*args, **kwargs)
-        input = arc.Relation(types=(arc.types[0], cls), name=arc.NAME_IN)
-        output = arc.Relation(types=(cls, arc.types[1]), name=arc.NAME_OUT)
-        arc.add(input)
-        arc.add(output)
-        return arc
+    def typecheck(cls, left, right):
+        if not issubclass(left.types[left.INPUT], right.types[right.INPUT]):
+            raise TypeError(right)
+        if not issubclass(right.types[right.OUTPUT], left.types[left.OUTPUT]):
+            raise TypeError(right)
     
-    def __init__(self, types, **kwargs):
-        super(Arc, self).__init__(types=types, **kwargs)
+    def __init__(self, *types):
+        if len(types) !=  2:
+            raise TypeError(types)
+        self.types = tuple(types)
+    
+    input = None
+    output = None
+    
+    @trellis.modifier
+    def __lshift__(self, event):
+        if self.output is None:
+            raise RuntimeError(event)
+        return self.output << event
+
+    @trellis.modifier
+    def __rshift__(self, event):
+        if self.input is None:
+            raise RuntimeError(event)
+        return self.input >> event
+
+#############################################################################
+#############################################################################
+
+class Port(Relation, pypetri.hierarchy.Connector):
+    """A Port is a typed and directional connector between Petri Net components."""
+    
+    def __init__(self, *types, **kwargs):
+        Relation.__init__(self, *types)
+        pypetri.hierarchy.Connector.__init__(self, **kwargs)
+
+    @trellis.modifier
+    def connect(self, other):
+        self.typecheck(self, other)
+        pypetri.hierarchy.Connector.connect(self, other)
+
+    @trellis.maintain
+    def input(self): # FIXME: DRY
+        type = self.types[self.INPUT]
+        if self.domain is not None:
+            if instantiates(self.domain, type):
+                return self.domain
+        if self.peer is not None and self.peer.domain is not None:
+            if instantiates(self.peer.domain, type):
+                return self.peer
+        return None
+    
+    @trellis.maintain
+    def output(self): # FIXME: DRY
+        type = self.types[self.OUTPUT]
+        if self.domain is not None:
+            if instantiates(self.domain, type):
+                return self.domain
+        if self.peer is not None and self.peer.domain is not None:
+            if instantiates(self.peer.domain, type):
+                return self.peer
+        return None
+        
+    
+#############################################################################
+#############################################################################
+
+class Marking(trellis.Component):
+    """Assignment of some tokens to a component."""
+
+    def __add__(self, other):
+        return self
+    
+    def __radd__(self, other):
+        if other:
+            return other
+        return self
+    
+    def __sub__(self, other):
+        if other:
+            return None
+        else:
+            return self
+
+    def __rsub__(self, other):
+        raise ValueError(other)
+        
+    def __nonzero__(self):
+        return True
+
+#############################################################################
+#############################################################################
+
+class Flow(collections.Iterable):
+    """A marking associated with an arc."""
+    
+    def __init__(self, arc=None, marking=None,):
+        self.marking = marking
+        self.arc = arc
+    
+    path = property(lambda self: () if self.arc is None else (self.source,\
+                                                              self.input,\
+                                                              self.arc.input,\
+                                                              self.arc,\
+                                                              self.arc.output,\
+                                                              self.output,\
+                                                              self.sink))
+    source = property(lambda self: None if self.arc is None else self.arc.source)
+    sink = property(lambda self: None if self.arc is None else self.arc.sink)
+    input = property(lambda self: None if self.arc is None else self.arc.input.input)
+    output = property(lambda self: None if self.arc is None else self.arc.output.output)
+
+    def __iter__(self):
+        for hop in self.path:
+            yield hop
+
+    def intersects(self, other):
+        path = other.path
+        for p in self.path:
+            if p in path:
+                return p
+        return None
+
+    
+#############################################################################
+#############################################################################
+
+class Event(collections.MutableSet):
+    """Collection of flows."""
+    
+    Marking = Marking
+    
+    def __init__(self, transition=None, flows=None):
+        self.transition = transition
+        self.flows = set() if flows is None else flows
+    
+    def __len__(self):
+        return len(self.flows)
+    
+    def __contains__(self, item):
+        return item in self.flows
+    
+    def __iter__(self):
+        for item in self.flows:
+            yield item
+    
+    def add(self, item):
+        self.flows.add(item)
+    
+    def discard(self, item):
+        self.flows.discard(item)
+
+#############################################################################
+#############################################################################
+
+class Arc(Relation, pypetri.hierarchy.Composer):
+    
+    NAME_INPUT = str(Relation.INPUT)
+    NAME_OUTPUT = str(Relation.OUTPUT)
+    
+    Port = Port
+    Flow = Flow
+
+    def __init__(self, *types, **kwargs):
+        Relation.__init__(self, *types)
+        pypetri.hierarchy.Composer.__init__(self, **kwargs)
+        input = self.Port(self.types[self.INPUT], self.__class__, name=self.NAME_INPUT)
+        output = self.Port(self.__class__, self.types[self.OUTPUT], name=self.NAME_OUTPUT)
+        self.add(input)
+        self.add(output)
     
     @trellis.maintain
     def input(self):
-        name = self.NAME_IN
+        name = self.NAME_INPUT
         if name in self:
             return self[name]
         else:
@@ -59,7 +227,7 @@ class Arc(pypetri.hierarchy.Composer):
     
     @trellis.maintain
     def output(self):
-        name = self.NAME_OUT
+        name = self.NAME_OUTPUT
         if name in self:
             return self[name]
         else:
@@ -68,163 +236,288 @@ class Arc(pypetri.hierarchy.Composer):
     @trellis.maintain
     def source(self):
         input = self.input
-        if input is not None and input.connected:
-            return input.peer.domain
+        if input is not None and input.input is not None:
+            return input.input.domain
         return None    
 
     @trellis.maintain
     def sink(self):
         output = self.output
-        if output is not None and output.connected:
-            return output.peer.domain
+        if output is not None and output.output is not None:
+            return output.output.domain
         return None
     
-    @trellis.modifier
-    def push(self, marking):
-        if not self.sink:
-            raise RuntimeError(marking)
-        return self.sink.push(marking)
+    def __rshift__(self, other):
+        return self.input >> other
     
-    @trellis.modifier
-    def pull(self, marking):
-        if not self.source:
-            raise RuntimeError(marking)
-        return self.source.pull(marking)
+    def __lshift__(self, other):
+        return self.output << other
                 
-    def enabled(self):
-        """Returns an iterator over a set of enabling Markings."""
-        pass
+    def search(self):
+        """Returns an iterator over a set of enabling Flows."""
+        if self.source is None:
+            return
+        enabled = self.enabled
+        marking = self.source.marking
+        if marking:
+            flow = self.Flow(arc=self, marking=marking,)
+            if enabled(flow):
+                yield flow
+    
+    def enabled(self, flow):
+        return True
 
 #############################################################################
 #############################################################################
 
 class Vertex(pypetri.hierarchy.Composer):
+    """Petri net vertex has a set of input arcs and a set of output arcs."""
     
-    Relation = Relation
-    
-    def __init__(self, *args, **kwargs):
-        super(Vertex, self).__init__(*args, **kwargs)
-        self.inputs = trellis.Set()
-        self.outputs = trellis.Set()
-    
-    @trellis.modifier
-    def add(self, inferior):
-        if not isinstance(inferior, self.Relation):
-            raise TypeError(inferior)
-        if not (isinstance(self, inferior.types[0]) \
-                or isinstance(self, inferior.types[1])):
-            raise TypeError(inferior)
-        return super(Vertex, self).add(inferior)
+    Port = Port
     
     @trellis.maintain
-    def classify(self):
-        changes = self.contains.added
-        if changes:
-            for relation in changes.itervalues():
-                if isinstance(self, relation.types[0]):
-                    self.outputs.add(relation)
-                else:
-                    self.inputs.add(relation)
-        changes = self.contains.deleted
-        if changes:
-            for relation in changes.itervalues():
-                if isinstance(self, relation.types[0]):
-                    self.outputs.remove(relation)
-                else:
-                    self.inputs.remove(relation)
-
+    def inputs(self): # FIXME: DRY
+        if self.contains is None or len(self.contains) == 0:
+            return set()
+        current = self.inputs
+        changes = self.contains
+        filter = lambda x: instantiates(self, x.types[x.OUTPUT])
+        result = update(current, changes, filter)
+        return result
+    
+    @trellis.maintain
+    def outputs(self): # FIXME: DRY
+        if self.contains is None or len(self.contains) == 0:
+            return set()
+        current = self.outputs
+        changes = self.contains
+        filter = lambda x: instantiates(self, x.types[x.INPUT])
+        result = update(current, changes, filter)
+        return result
         
 #############################################################################
 #############################################################################
 
 class Condition(Vertex):
     
-    marking = trellis.attr(None)
+    Marking = Marking
     
+    marking = trellis.attr(None)
+        
+    @trellis.modifier
+    def __rshift__(self, other):
+        self.marking -= other.marking
+        return other
+    
+    @trellis.modifier
+    def __lshift__(self, other):
+        self.marking += other.marking
+        return other
         
 #############################################################################
 #############################################################################
 
 class Transition(collections.Callable, Vertex):
     
-    def enabled(self):
-        """Returns an iterator over a set of enabling Events."""
-        pass
+    Event = Event
+    Flow = Flow
+    Marking = Marking
+    
+    def search(self, searcher=None):
+        """Returns an iterator over a set of enabling Events.
+        
+        There exists some (possibly empty) set of input arc flow
+        combinations that satisfy this transition.  This set of possible
+        inputs is distinct from the heuristic used to sample this set.
+        """
+        # A brute-force, general approach is to yield all combinations
+        # (n choose k for k in 1..n) of enabling events from all inputs.
+        # We don't care about ordering (why we don't do permutations),
+        # and there is no repetition.
+        searcher = brute if searcher is None else searcher
+        enabled = self.enabled
+        
+        def next(input):
+            arc = input.input.input
+            for f in arc.search():
+                yield f
+                
+        def inputs():
+            for i in self.inputs:
+                if i.connected and i.input.input is not None:
+                    yield next(i)
+            
+        for flows in searcher(inputs()):
+            event = self.Event(transition=self, flows=flows)
+            if len(flows) > 0 and enabled(event):
+                yield event
+                    
+    def enabled(self, event):
+        incoming = [i.input.input for i in self.inputs if i.connected]
+        return len(event) == len(incoming)
     
     def __call__(self, event):
-        """Returns an Event."""
-        pass
-
-#############################################################################
-#############################################################################
-
-class Marking(trellis.Component):
-    """Mapping of a component to some tokens. """
+        """Returns a set of outputs."""
+        outputs = self.Event(transition=self,)
+        outgoing = [o.output.output for o in self.outputs if o.connected]
+        for arc in outgoing:
+            output = self.Flow(arc=arc, marking=outputs.Marking())
+            outputs.add(output)
+        return outputs
     
-    marks = trellis.make(None)
-
-    def push(self, other):
-        pass
+    @trellis.modifier
+    def __rshift__(self, flows):
+        outputs = self.Event(transition=self,)
+        for flow in flows:
+            output = flow.output >> flow
+            outputs.add(output)
+        return outputs
     
-    def pull(self, other):
-        pass
+    @trellis.modifier    
+    def __lshift__(self, flows):
+        outputs = self.Event(transition=self,)
+        for flow in flows:
+            output = flow.input << flow
+            outputs.add(output)
+        return outputs
+
+#############################################################################
+#############################################################################
+
+class Network(collections.Callable, pypetri.hierarchy.Composer):
+    """Fires one transition at a time.
     
-    def disjoint(self, subs):
-        pass
-
-#############################################################################
-#############################################################################
-
-class Event(collections.Callable):
+    I considered two options for executing events. One was to
+    find and execute a set of non-conflicting events concurrently.
+    However, without domain knowledge, determining whether events
+    are conflicting or not seems tricky, as one must consider both
+    the input and output conditions.
     
-    def __init__(self, transition):
-        self.transition = transition
-        self.markings = set()
-
-    def __call__(self):
-        return self.transition.fire(self)
-
-#############################################################################
-#############################################################################
-
-class Network(pypetri.hierarchy.Composer):
+    The simpler option is to only execute one event at a time.
+    This essentially enforces serialization on events, but seems
+    simpler to reason about and to implement.
+    """
+    
+    ARC_TOKEN = '->'
     
     Arc = Arc
     Condition = Condition
     Transition = Transition
+    Port = Port
 
-    def disjoint(self, events):
-        # find shared input conditions
-        inputs = { }
-        for event in events:
-            for marking in event.markings:
-                arc = marking.marks
-                source = arc.source
-                if source.uid not in inputs:
-                    inputs[source.uid] = source.marking, []
-                inputs[source.uid][1].append(marking)
-        for superset, markings in inputs.itervalues():
-            if len(markings) < 2:
-                continue
-            if not superset.disjoint(markings):
-                return False
-        return True    
-    
     @trellis.modifier
-    def step(self, events):
-        for event in events:
-            self.trigger(event)
-    
-    @trellis.modifier
-    def trigger(self, input):
-        output = input()
-        for marking in input.markings:
-            arc = marking.marks
-            arc.pull(marking)
-        for marking in output.markings:
-            arc = marking.marks
-            arc.push(marking)
+    def __call__(self, event):
+        transition = event.transition
+        input = (transition >> event)
+        output = transition(input)
+        output = (transition << output)
         return output
+    
+    @trellis.maintain
+    def arcs(self): # FIXME: DRY
+        if self.contains is None or len(self.contains) == 0:
+            return set()
+        current = self.arcs
+        changes = self.contains
+        filter = lambda x: instantiates(x, self.Arc)
+        result = update(current, changes, filter)
+        return result
+
+    @trellis.maintain
+    def conditions(self): # FIXME: DRY
+        if self.contains is None or len(self.contains) == 0:
+            return set()
+        current = self.conditions
+        changes = self.contains
+        filter = lambda x: instantiates(x, self.Condition)
+        result = update(current, changes, filter)
+        return result
+        
+    @trellis.maintain
+    def transitions(self): # FIXME: DRY
+        if self.contains is None or len(self.contains) == 0:
+            return set()
+        current = self.transitions
+        changes = self.contains
+        filter = lambda x: instantiates(x, self.Transition)
+        result = update(current, changes, filter)
+        return result
+    
+    @trellis.maintain
+    def networks(self): # FIXME: DRY
+        if None in (self.arcs, self.transitions, self.conditions,):
+            return set()
+        # assume that subcomponents that are unclassified are networks
+        all = set(self.contains.itervalues())
+        leftover = all - (self.arcs | self.transitions | self.conditions)
+        return leftover
+    
+    def search(self, components=None):
+        if components is None:
+            components = self.transitions | self.networks
+        for sub in components:
+            for event in sub.search():
+                yield event
+
+    def connect(self, source, sink, **kwargs):
+        output = None
+        input = None
+        if isinstance(source, self.Port):
+            output = source
+            source = output.input
+        if isinstance(sink, self.Port):
+            input = sink
+            sink = input.output
+        names = (source.uid, sink.uid,)
+        name = self.ARC_TOKEN.join(names)
+        if output is None:
+            output = self.output(source, name)
+        if input is None:
+            input = self.input(sink, name)
+        types = []
+        for cls in source.__class__, sink.__class__:
+            for t in self.Condition, self.Transition:
+                if issubclass(cls, t):
+                    types.append(t)
+                    break
+        arc = self.Arc(*types, name=name, **kwargs)
+        self.add(arc)
+        arc.input.connect(output)
+        arc.output.connect(input)
+        return arc
+    
+    @trellis.modifier
+    def input(self, vertex, port): # FIXME: DRY
+        if isinstance(vertex, str):
+            vertex = self[vertex]
+        p = vertex.Port(self.Arc, vertex.__class__, name=port,)
+        vertex.add(p)
+        return p
+    
+    @trellis.modifier
+    def output(self, vertex, port): # FIXME: DRY
+        if isinstance(vertex, str):
+            vertex = self[vertex]
+        p = vertex.Port(vertex.__class__, self.Arc, name=port,)
+        vertex.add(p)
+        return p
+    
+# was written to discover whether concurrent events conflict
+# unused for now
+#    def enabled(self, events):
+#        # map flows to shared vertices
+#        shared = {}
+#        for e in events:
+#            for f in e.flows:
+#                start = f.source.uid
+#                if start not in shared:
+#                    shared[start] = set()
+#                shared[start].add(f)
+#        for uid, flows in shared.iteritems():
+#            start = self.top.find(uid)
+#            if not start.enabled(flows):
+#                return False
+#        return True
 
 #############################################################################
 #############################################################################

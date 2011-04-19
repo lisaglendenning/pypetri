@@ -15,6 +15,9 @@ class Namespace(collections.Hashable, trellis.Component):
     name = trellis.make(str)
     domain = trellis.attr(None)
     
+    def __init__(self, **kwargs):
+        trellis.Component.__init__(self, **kwargs)
+    
     def __hash__(self):
         return hash(self.name)
     
@@ -25,6 +28,11 @@ class Namespace(collections.Hashable, trellis.Component):
         else:
             n2 = other.name
         return cmp(n1, n2)
+    
+    def __eq__(self, other):
+        if isinstance(other, Namespace):
+            return self.uid == other.uid
+        return False
     
     @trellis.maintain
     def uid(self):
@@ -89,8 +97,14 @@ class Connector(Namespace):
 class Composer(collections.Mapping, Namespace):
 
     def __init__(self, **kwargs):
-        super(Composer, self).__init__(**kwargs)
+        Namespace.__init__(self, **kwargs)
         self.contains = trellis.Dict()
+    
+    def __hash__(self):
+        return Namespace.__hash__(self)
+    
+    def __cmp__(self, other):
+        return Namespace.__cmp__(self, other)
     
     def __getitem__(self, name):
         return self.contains[name]

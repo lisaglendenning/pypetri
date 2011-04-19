@@ -10,37 +10,41 @@ import examples.simple as simple
 
 class Light(simple.SimpleNetwork):
     
-    CONDITIONS = ["green", "yellow", "red",]
-    TRANSITIONS = ["red2green", "green2yellow", "yellow2red",]
-    ARCS = [(TRANSITIONS[0], CONDITIONS[0]),
-            (CONDITIONS[0], TRANSITIONS[1]),
-            (TRANSITIONS[1], CONDITIONS[1]),
-            (CONDITIONS[1], TRANSITIONS[2]),
-            (TRANSITIONS[2], CONDITIONS[2]),
-            (CONDITIONS[2], TRANSITIONS[0]),]
+    CONDITIONS = ["RED", "GREEN", "YELLOW",]
+    TRANSITIONS = ["RED2GREEN", "GREEN2YELLOW", "YELLOW2RED",]
 
     @classmethod
     def create(cls, *args, **kwargs):
         light = cls(*args, **kwargs)
         
-        # light states
-        conditions = [light.Condition(name=n) for n in light.CONDITIONS]
-        for hub in conditions:
-            light.add(hub)
+        conditions = light.CONDITIONS
+        transitions = light.TRANSITIONS
         
-        # light transitions
-        transitions = [light.Transition(name=n) for n in light.TRANSITIONS]
-        for hub in transitions:
-            light.add(hub)
+        # light states and transitions
+        for cls, names in ((light.Condition, conditions), 
+                           (light.Transition, transitions)):
+            vertices = [cls(name=x) for x in names]
+            for x in vertices:
+                light.add(x)
         
-        # arcs
-        for pair in light.ARCS:
-            capacity = 1 if "red" in pair else 2
-            hubs = [light.find(n) for n in pair]
-            light.connect(hubs[0], hubs[1], capacity)
+        # arcs create a circular network
+        start = light[conditions[0]]
+        for i in xrange(len(conditions)):
+            if i == len(conditions) - 1:
+                j = 0
+            else:
+                j = i + 1
+            conds = [light[conditions[x]] for x in i,j]
+            tran = light[transitions[i]]
+            for pair in ((conds[0], tran,),(tran, conds[1]),):
+                demand = 1 if start in pair else 2
+                arc = light.connect(pair[0], pair[1], demand)
         
         return light
 
+    def initialize(self):
+        start = self[self.CONDITIONS[0]]
+        start.marking.count = 1
 
 #
 # Net composed of two light subnets
@@ -49,7 +53,7 @@ class Light(simple.SimpleNetwork):
 class TwoWayIntersection(simple.SimpleNetwork):
 
     # Global start state
-    START = 'start'
+    START = 'START'
 
     # Light names
     LIGHTS = ['A', 'B']
@@ -67,18 +71,22 @@ class TwoWayIntersection(simple.SimpleNetwork):
             intersect.add(light)
             
             # input to light
-            intersect.connect(start, light.find(Light.TRANSITIONS[0]))
+            intersect.connect(start, light[light.TRANSITIONS[0]])
             
             # output from light
-            intersect.connect(light.find(Light.TRANSITIONS[-1]), start)
+            intersect.connect(light[light.TRANSITIONS[-1]], start)
     
-        # Initial markings
-        start.marking.count = 1
-        for l in intersect.LIGHTS:
-            light = intersect.find(l)
-            red = light.find(Light.CONDITIONS[-1])
-            red.marking.count = 1
-        
+        intersect.initialize()
         return intersect
+    
+    def initialize(self):
 
+        # Initial markings
+        # Each light begins in the red state
+        start = self[self.START]
+        start.marking.count = 1
+        for l in self.LIGHTS:
+            light = self[l]
+            light.initialize()
+            
 create = TwoWayIntersection.create
