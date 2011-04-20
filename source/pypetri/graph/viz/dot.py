@@ -1,13 +1,17 @@
 
-def dot(graph, network):
-    for u in graph:
-        v = network.find(u)
-        if isinstance(v, network.Condition):
-            shape = 'ellipse'
-        elif isinstance(v, network.Transition):
-            shape = 'box'
-        else:
-            shape = 'doubleoctagon'
-        graph.node[u]['shape'] = shape
+import pypetri.graph.net
 
+SHAPE = 'shape'
+SHAPES = { pypetri.graph.net.NetworkGraph.CONDITION: 'ellipse', 
+           pypetri.graph.net.NetworkGraph.TRANSITION: 'box',
+           pypetri.graph.net.NetworkGraph.NETWORK: 'doubleoctagon',
+         }
+
+def markup(network, graph=None):
+    if graph is None:
+        graph = network.snapshot()
+    for u in graph:
+        role = graph.node[u][pypetri.graph.net.NetworkGraph.ROLE]
+        if role in SHAPES:
+            graph.node[u][SHAPE] = SHAPES[role]
     return graph

@@ -154,7 +154,8 @@ class Graph(collections.Mapping, trellis.Component):
             graph.clear()
         else:
             assert False
-        trellis.on_undo(self.undo, graph, undos)
+        if log:
+            trellis.on_undo(self.undo, graph, undos)
 
     def undo(self, graph, changes):
         for change in changes:
