@@ -12,7 +12,7 @@ import tests.test_net
 
 class TestCaseNetGraph(tests.test_net.TestCaseNet):
     
-    def test_static(self, network=None, conditions=None, transitions=None):
+    def test_linear(self, network=None, conditions=None, transitions=None):
         if network is None:
             network = self.Network()
         if conditions is None:

@@ -11,7 +11,7 @@ import examples.traffic_lights as traffic_lights
 class TestCaseTrafficLights(unittest.TestCase):
     
     def test_example(self):
-        network = traffic_lights.TwoWayIntersection.create()
+        network = traffic_lights.create()
         enabled = [e for e in network.search()]
         self.assertEqual(len(enabled), 2)
         

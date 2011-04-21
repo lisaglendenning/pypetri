@@ -108,7 +108,7 @@ class SimpleNetwork(pypetri.net.Network):
     Transition = SimpleTransition
     Condition = SimpleCondition
 
-    def connect(self, source, sink, demand=None, **kwargs):
+    def connect(self, source, sink, arc=None, demand=None, **kwargs):
         if demand is None:
             demand = 1
         if isinstance(demand, int):

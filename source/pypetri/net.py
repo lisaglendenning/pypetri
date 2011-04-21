@@ -1,6 +1,8 @@
 # @copyright
 # @license
 
+# TODO: could probably improve the code using itertools?
+
 import collections
 
 import pypetri.trellis as trellis
@@ -78,6 +80,13 @@ class Relation(object):
 class Port(Relation, pypetri.hierarchy.Connector):
     """A Port is a typed and directional connector between Petri Net components."""
     
+    @classmethod
+    def typecheck(cls, left, right):
+        if left.domain is left.input:
+            return Relation.typecheck(left, right)
+        else:
+            return Relation.typecheck(right, left)
+    
     def __init__(self, *types, **kwargs):
         Relation.__init__(self, *types)
         pypetri.hierarchy.Connector.__init__(self, **kwargs)
@@ -144,7 +153,7 @@ class Flow(collections.Iterable):
     
     def __init__(self, arc=None, marking=None,):
         self.marking = marking
-        self.arc = arc
+        self.arc = arc # TODO: make this immutable so it doesn't break hash()
     
     path = property(lambda self: () if self.arc is None else (self.source,\
                                                               self.input,\
@@ -157,6 +166,12 @@ class Flow(collections.Iterable):
     sink = property(lambda self: None if self.arc is None else self.arc.sink)
     input = property(lambda self: None if self.arc is None else self.arc.input.input)
     output = property(lambda self: None if self.arc is None else self.arc.output.output)
+
+    def __hash__(self):
+        return hash(self.arc)
+
+    def __cmp__(self):
+        return cmp(self.arc)
 
     def __iter__(self):
         for hop in self.path:
@@ -173,7 +188,7 @@ class Flow(collections.Iterable):
 #############################################################################
 #############################################################################
 
-class Event(collections.MutableSet):
+class Event(collections.MutableSet, collections.Callable):
     """Collection of flows."""
     
     Marking = Marking
@@ -197,6 +212,14 @@ class Event(collections.MutableSet):
     
     def discard(self, item):
         self.flows.discard(item)
+    
+    @trellis.modifier
+    def __call__(self):
+        transition = self.transition
+        input = (transition >> self)
+        output = transition(input)
+        output = (transition << output)
+        return output
 
 #############################################################################
 #############################################################################
@@ -321,7 +344,6 @@ class Transition(collections.Callable, Vertex):
     
     Event = Event
     Flow = Flow
-    Marking = Marking
     
     def search(self, searcher=None):
         """Returns an iterator over a set of enabling Events.
@@ -407,11 +429,21 @@ class Network(collections.Callable, pypetri.hierarchy.Composer):
 
     @trellis.modifier
     def __call__(self, event):
-        transition = event.transition
-        input = (transition >> event)
-        output = transition(input)
-        output = (transition << output)
-        return output
+        return event()
+
+    def zip(self, odd, even, **kwargs):
+        if 0 in [len(x) for x in (odd, even,)]:
+            return
+        iters = iter(odd), iter(even)
+        pair = iters[0].next(), iters[1].next()
+        while True:
+            pair = [self[x] if isinstance(x, str) else x for x in pair]
+            self.connect(*pair, **kwargs)
+            try:
+                pair = pair[1], iters[0].next()
+                iters = iters[1], iters[0]
+            except StopIteration:
+                break
     
     @trellis.maintain
     def arcs(self): # FIXME: DRY
@@ -459,7 +491,7 @@ class Network(collections.Callable, pypetri.hierarchy.Composer):
             for event in sub.search():
                 yield event
 
-    def connect(self, source, sink, **kwargs):
+    def connect(self, source, sink, arc=None, **kwargs):
         output = None
         input = None
         if isinstance(source, self.Port):
@@ -468,37 +500,33 @@ class Network(collections.Callable, pypetri.hierarchy.Composer):
         if isinstance(sink, self.Port):
             input = sink
             sink = input.output
-        names = (source.uid, sink.uid,)
-        name = self.ARC_TOKEN.join(names)
+        if arc is None:
+            names = (source.uid, sink.uid,)
+            name = self.ARC_TOKEN.join(names)
+            types = []
+            for cls in source.__class__, sink.__class__:
+                for t in self.Condition, self.Transition:
+                    if issubclass(cls, t):
+                        types.append(t)
+                        break
+            arc = self.Arc(*types, name=name, **kwargs)
+            self.add(arc)
         if output is None:
-            output = self.output(source, name)
+            output = self.open(source, arc.name, input=False)
         if input is None:
-            input = self.input(sink, name)
-        types = []
-        for cls in source.__class__, sink.__class__:
-            for t in self.Condition, self.Transition:
-                if issubclass(cls, t):
-                    types.append(t)
-                    break
-        arc = self.Arc(*types, name=name, **kwargs)
-        self.add(arc)
+            input = self.open(sink, arc.name, input=True)
         arc.input.connect(output)
         arc.output.connect(input)
         return arc
-    
-    @trellis.modifier
-    def input(self, vertex, port): # FIXME: DRY
+
+    def open(self, vertex, port, input=True):
         if isinstance(vertex, str):
             vertex = self[vertex]
-        p = vertex.Port(self.Arc, vertex.__class__, name=port,)
-        vertex.add(p)
-        return p
-    
-    @trellis.modifier
-    def output(self, vertex, port): # FIXME: DRY
-        if isinstance(vertex, str):
-            vertex = self[vertex]
-        p = vertex.Port(vertex.__class__, self.Arc, name=port,)
+        if input:
+            types = self.Arc, vertex.__class__,
+        else:
+            types = vertex.__class__, self.Arc,
+        p = vertex.Port(types[0], types[1], name=port,)
         vertex.add(p)
         return p
     
