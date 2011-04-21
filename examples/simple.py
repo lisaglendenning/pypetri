@@ -7,7 +7,7 @@ import pypetri.net
 #############################################################################
 #############################################################################
 
-class SimpleMarking(pypetri.net.Marking):
+class Count(pypetri.net.Marking):
 
     count = trellis.attr(0)
     
@@ -38,82 +38,91 @@ class SimpleMarking(pypetri.net.Marking):
 #############################################################################
 #############################################################################
 
-class SimpleArc(pypetri.net.Arc):
-    
-    Marking = SimpleMarking
-    
+class Threshold(pypetri.net.Port):
+
     demand = trellis.attr(None)
         
-    def search(self):
-        if self.source is None:
-            return
-        marking = self.source.marking
+    def peek(self):
         demand = self.demand
-        if marking >= demand:
-            flow = self.Flow(arc=self, marking=demand,)
-            yield flow
-            
-    def enabled(self, flow):
-        return flow.marking == self.demand
+        for flow in super(Threshold, self).peek():
+            if flow.marking >= demand:
+                flow.marking = demand
+                yield flow
+    
+    def __int__(self):
+        demand = 0 if self.demand is None else int(self.demand)
+        return demand
 
 #############################################################################
 #############################################################################
 
-class SimpleTransition(pypetri.net.Transition):
+class Conserve(pypetri.net.Transition):
+    
+    Port = Threshold
+    
+    @trellis.maintain
+    def demands(self):
+        if self.outputs is None:
+            return set()
+        ports = [x for x in self.outputs if x.connected]
+        return ports
     
     @trellis.maintain
     def outflow(self):
-        sum = 0
-        if self.outputs is not None:
-            outputs = [x.output.output for x in self.outputs if x.connected]
-            for output in outputs:
-                sum += int(output.demand)
-        return sum
+        outflow = 0
+        for threshold in self.demands:
+            outflow += int(threshold)
+        return outflow
     
-    def enabled(self, event):
-        inflow = 0
-        for flow in event.flows:
-            inflow += int(flow.marking)
-        return inflow == self.outflow
+    def peek(self, *args):
+        for event in super(Conserve, self).peek(*args):
+            inflow = 0
+            for flow in event.flows:
+                inflow += int(flow.marking)
+            if inflow == self.outflow:
+                yield event
     
     def __call__(self, event):
-        if not self.enabled(event):
-            raise RuntimeError(event)
         outputs = self.Event(transition=self,)
-        outgoing = [o.output.output for o in self.outputs if o.connected]
-        for arc in outgoing:
-            output = self.Flow(arc=arc, marking=arc.demand)
+        for threshold in self.demands:
+            arc = threshold.output.output
+            output = self.Flow(arc=arc, marking=threshold.demand)
             outputs.add(output)
         return outputs
 
 #############################################################################
 #############################################################################
   
-class SimpleCondition(pypetri.net.Condition):
-    Marking = SimpleMarking
+class Tokens(pypetri.net.Condition):
+    Marking = Count
     
     def __init__(self, marking=None, **kwargs):
         if marking is None:
             marking = self.Marking()
-        super(SimpleCondition, self).__init__(marking=marking, **kwargs)
+        super(Tokens, self).__init__(marking=marking, **kwargs)
     
     count = property(lambda self: self.marking.count)
 
 #############################################################################
 #############################################################################
 
-class SimpleNetwork(pypetri.net.Network):
+class TokenNetwork(pypetri.net.Network):
 
-    Arc = SimpleArc
-    Transition = SimpleTransition
-    Condition = SimpleCondition
+    Transition = Conserve
+    Condition = Tokens
 
     def connect(self, source, sink, arc=None, demand=None, **kwargs):
         if demand is None:
             demand = 1
         if isinstance(demand, int):
-            demand = self.Arc.Marking(count=demand)
-        return super(SimpleNetwork, self).connect(source, sink, demand=demand, **kwargs)
+            demand = self.Condition.Marking(count=demand)
+        names = (source.uid, sink.uid,)
+        name = self.ARC_TOKEN.join(names)
+        if pypetri.net.instantiates(source, self.Transition):
+            source = self.open(source, name, input=False, demand=demand)
+        if pypetri.net.instantiates(sink, self.Transition):
+            sink = self.open(sink, name, input=True, demand=demand)
+        return super(TokenNetwork, self).connect(source, sink, **kwargs)
         
 #############################################################################
 #############################################################################

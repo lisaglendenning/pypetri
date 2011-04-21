@@ -62,7 +62,7 @@ class TestCaseNet(unittest.TestCase):
             transitions = self.TRANSITIONS
         self.linearize(network, conditions, transitions)
         
-        enabled = [e for e in network.search()]
+        enabled = [e for e in network.peek() if len(e.flows) > 0]
         self.assertEqual(len(enabled), 0)
         
         self.initialize(network)
@@ -72,13 +72,13 @@ class TestCaseNet(unittest.TestCase):
             next = network[conditions[i+1]]
             self.assertTrue(current.marking)
             self.assertFalse(next.marking)
-            enabled = [e for e in network.search()]
+            enabled = [e for e in network.peek() if len(e.flows) > 0]
             self.assertEqual(len(enabled), 1)
             output = network(enabled[0])
             self.assertFalse(current.marking)
             self.assertTrue(next.marking)
 
-        enabled = [e for e in network.search()]
+        enabled = [e for e in network.peek() if len(e.flows) > 0]
         self.assertEqual(len(enabled), 0)
         
         return network

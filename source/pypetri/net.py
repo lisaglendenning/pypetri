@@ -38,87 +38,7 @@ def update(current, changes, filter=None):
     removed = current & set(changes.deleted)
     result = (current - removed) | added
     return result 
-    
-#############################################################################
-#############################################################################
-
-class Relation(object):
-    """A relation is an ordered pair of types."""
-
-    INPUT, OUTPUT = xrange(2)
-    
-    @classmethod
-    def typecheck(cls, left, right):
-        if not issubclass(left.types[left.INPUT], right.types[right.INPUT]):
-            raise TypeError(right)
-        if not issubclass(right.types[right.OUTPUT], left.types[left.OUTPUT]):
-            raise TypeError(right)
-    
-    def __init__(self, *types):
-        if len(types) !=  2:
-            raise TypeError(types)
-        self.types = tuple(types)
-    
-    input = None
-    output = None
-    
-    @trellis.modifier
-    def __lshift__(self, event):
-        if self.output is None:
-            raise RuntimeError(event)
-        return self.output << event
-
-    @trellis.modifier
-    def __rshift__(self, event):
-        if self.input is None:
-            raise RuntimeError(event)
-        return self.input >> event
-
-#############################################################################
-#############################################################################
-
-class Port(Relation, pypetri.hierarchy.Connector):
-    """A Port is a typed and directional connector between Petri Net components."""
-    
-    @classmethod
-    def typecheck(cls, left, right):
-        if left.domain is left.input:
-            return Relation.typecheck(left, right)
-        else:
-            return Relation.typecheck(right, left)
-    
-    def __init__(self, *types, **kwargs):
-        Relation.__init__(self, *types)
-        pypetri.hierarchy.Connector.__init__(self, **kwargs)
-
-    @trellis.modifier
-    def connect(self, other):
-        self.typecheck(self, other)
-        pypetri.hierarchy.Connector.connect(self, other)
-
-    @trellis.maintain
-    def input(self): # FIXME: DRY
-        type = self.types[self.INPUT]
-        if self.domain is not None:
-            if instantiates(self.domain, type):
-                return self.domain
-        if self.peer is not None and self.peer.domain is not None:
-            if instantiates(self.peer.domain, type):
-                return self.peer
-        return None
-    
-    @trellis.maintain
-    def output(self): # FIXME: DRY
-        type = self.types[self.OUTPUT]
-        if self.domain is not None:
-            if instantiates(self.domain, type):
-                return self.domain
-        if self.peer is not None and self.peer.domain is not None:
-            if instantiates(self.peer.domain, type):
-                return self.peer
-        return None
         
-    
 #############################################################################
 #############################################################################
 
@@ -176,15 +96,116 @@ class Flow(collections.Iterable):
     def __iter__(self):
         for hop in self.path:
             yield hop
-
-    def intersects(self, other):
-        path = other.path
-        for p in self.path:
-            if p in path:
-                return p
-        return None
-
     
+    def push(self):
+        return self.output.push(self)
+
+    def pull(self):
+        return self.input.pull(self)
+
+#############################################################################
+#############################################################################
+
+class Component(object):
+
+    def push(self, obj):
+        pass
+    
+    def pull(self, obj):
+        pass
+    
+    def peek(self, obj):
+        pass
+
+#############################################################################
+#############################################################################
+
+class Relation(Component):
+    """A relation is a connection between a typed, ordered pair."""
+
+    INPUT, OUTPUT = xrange(2)
+    
+    @classmethod
+    def typecheck(cls, left, right):
+        if not issubclass(left.types[left.INPUT], right.types[right.INPUT]):
+            raise TypeError(right)
+        if not issubclass(right.types[right.OUTPUT], left.types[left.OUTPUT]):
+            raise TypeError(right)
+    
+    def __init__(self, *types):
+        if len(types) !=  2:
+            raise TypeError(types)
+        self.types = tuple(types)
+    
+    input = None
+    output = None
+
+
+#############################################################################
+#############################################################################
+
+class Port(Relation, pypetri.hierarchy.Connector):
+    """A Port is a typed and directional connector between Petri Net components."""
+    
+    @classmethod
+    def typecheck(cls, left, right):
+        if left.domain is left.input:
+            return Relation.typecheck(left, right)
+        else:
+            return Relation.typecheck(right, left)
+    
+    def __init__(self, *types, **kwargs):
+        Relation.__init__(self, *types)
+        pypetri.hierarchy.Connector.__init__(self, **kwargs)
+
+    @trellis.modifier
+    def connect(self, other):
+        self.typecheck(self, other)
+        pypetri.hierarchy.Connector.connect(self, other)
+
+    @trellis.maintain
+    def input(self): # FIXME: DRY
+        type = self.types[self.INPUT]
+        if self.domain is not None:
+            if instantiates(self.domain, type):
+                return self.domain
+        if self.peer is not None and self.peer.domain is not None:
+            if instantiates(self.peer.domain, type):
+                return self.peer
+        return None
+    
+    @trellis.maintain
+    def output(self): # FIXME: DRY
+        type = self.types[self.OUTPUT]
+        if self.domain is not None:
+            if instantiates(self.domain, type):
+                return self.domain
+        if self.peer is not None and self.peer.domain is not None:
+            if instantiates(self.peer.domain, type):
+                return self.peer
+        return None
+    
+    @trellis.maintain
+    def push(self):
+        output = self.output
+        if output is None:
+            return None
+        return output.push
+
+    @trellis.maintain
+    def pull(self):
+        input = self.input
+        if input is None:
+            return None
+        return input.pull
+    
+    @trellis.maintain
+    def peek(self):
+        input = self.input
+        if input is None:
+            return lambda *args: iter(tuple())
+        return input.peek
+
 #############################################################################
 #############################################################################
 
@@ -195,7 +216,7 @@ class Event(collections.MutableSet, collections.Callable):
     
     def __init__(self, transition=None, flows=None):
         self.transition = transition
-        self.flows = set() if flows is None else flows
+        self.flows = set() if flows is None else set(flows)
     
     def __len__(self):
         return len(self.flows)
@@ -212,13 +233,12 @@ class Event(collections.MutableSet, collections.Callable):
     
     def discard(self, item):
         self.flows.discard(item)
-    
-    @trellis.modifier
+
     def __call__(self):
         transition = self.transition
-        input = (transition >> self)
+        input = transition.pull(self)
         output = transition(input)
-        output = (transition << output)
+        output = transition.push(output)
         return output
 
 #############################################################################
@@ -270,25 +290,30 @@ class Arc(Relation, pypetri.hierarchy.Composer):
             return output.output.domain
         return None
     
-    def __rshift__(self, other):
-        return self.input >> other
+    @trellis.maintain
+    def push(self):
+        output = self.output
+        if output is None:
+            return None
+        return output.push
+
+    @trellis.maintain
+    def pull(self):
+        input = self.input
+        if input is None:
+            return None
+        return input.pull
     
-    def __lshift__(self, other):
-        return self.output << other
-                
-    def search(self):
-        """Returns an iterator over a set of enabling Flows."""
-        if self.source is None:
-            return
-        enabled = self.enabled
-        marking = self.source.marking
-        if marking:
-            flow = self.Flow(arc=self, marking=marking,)
-            if enabled(flow):
+    @trellis.maintain
+    def peek(self):
+        input = self.input
+        if input is None:
+            return lambda *args: iter(tuple())
+        def wrapper(*args):
+            for marking in input.peek(*args):
+                flow = self.Flow(arc=self, marking=marking,)
                 yield flow
-    
-    def enabled(self, flow):
-        return True
+        return wrapper
 
 #############################################################################
 #############################################################################
@@ -326,17 +351,20 @@ class Condition(Vertex):
     Marking = Marking
     
     marking = trellis.attr(None)
-        
-    @trellis.modifier
-    def __rshift__(self, other):
+            
+    def push(self, other):
+        self.marking += other.marking
+        return other
+
+    def pull(self, other):
         self.marking -= other.marking
         return other
     
-    @trellis.modifier
-    def __lshift__(self, other):
-        self.marking += other.marking
-        return other
-        
+    def peek(self):
+        marking = self.marking
+        if marking:
+            yield marking
+
 #############################################################################
 #############################################################################
 
@@ -345,7 +373,7 @@ class Transition(collections.Callable, Vertex):
     Event = Event
     Flow = Flow
     
-    def search(self, searcher=None):
+    def peek(self, searcher=None):
         """Returns an iterator over a set of enabling Events.
         
         There exists some (possibly empty) set of input arc flow
@@ -357,27 +385,15 @@ class Transition(collections.Callable, Vertex):
         # We don't care about ordering (why we don't do permutations),
         # and there is no repetition.
         searcher = brute if searcher is None else searcher
-        enabled = self.enabled
-        
-        def next(input):
-            arc = input.input.input
-            for f in arc.search():
-                yield f
-                
+    
         def inputs():
             for i in self.inputs:
-                if i.connected and i.input.input is not None:
-                    yield next(i)
+                yield i.peek()
             
         for flows in searcher(inputs()):
             event = self.Event(transition=self, flows=flows)
-            if len(flows) > 0 and enabled(event):
-                yield event
+            yield event
                     
-    def enabled(self, event):
-        incoming = [i.input.input for i in self.inputs if i.connected]
-        return len(event) == len(incoming)
-    
     def __call__(self, event):
         """Returns a set of outputs."""
         outputs = self.Event(transition=self,)
@@ -388,18 +404,18 @@ class Transition(collections.Callable, Vertex):
         return outputs
     
     @trellis.modifier
-    def __rshift__(self, flows):
+    def pull(self, flows):
         outputs = self.Event(transition=self,)
         for flow in flows:
-            output = flow.output >> flow
+            output = flow.pull()
             outputs.add(output)
         return outputs
     
     @trellis.modifier    
-    def __lshift__(self, flows):
+    def push(self, flows):
         outputs = self.Event(transition=self,)
         for flow in flows:
-            output = flow.input << flow
+            output = flow.push()
             outputs.add(output)
         return outputs
 
@@ -484,12 +500,16 @@ class Network(collections.Callable, pypetri.hierarchy.Composer):
         leftover = all - (self.arcs | self.transitions | self.conditions)
         return leftover
     
-    def search(self, components=None):
-        if components is None:
-            components = self.transitions | self.networks
-        for sub in components:
-            for event in sub.search():
-                yield event
+    @trellis.maintain
+    def peek(self):
+        if None in (self.transitions, self.networks,):
+            return lambda *args: iter(tuple())
+        vertices = self.transitions | self.networks
+        def wrapper(components=vertices):
+            for sub in components:
+                for event in sub.peek():
+                    yield event
+        return wrapper
 
     def connect(self, source, sink, arc=None, **kwargs):
         output = None
@@ -519,33 +539,16 @@ class Network(collections.Callable, pypetri.hierarchy.Composer):
         arc.output.connect(input)
         return arc
 
-    def open(self, vertex, port, input=True):
+    def open(self, vertex, port, input=True, **kwargs):
         if isinstance(vertex, str):
             vertex = self[vertex]
         if input:
             types = self.Arc, vertex.__class__,
         else:
             types = vertex.__class__, self.Arc,
-        p = vertex.Port(types[0], types[1], name=port,)
+        p = vertex.Port(types[0], types[1], name=port, **kwargs)
         vertex.add(p)
         return p
-    
-# was written to discover whether concurrent events conflict
-# unused for now
-#    def enabled(self, events):
-#        # map flows to shared vertices
-#        shared = {}
-#        for e in events:
-#            for f in e.flows:
-#                start = f.source.uid
-#                if start not in shared:
-#                    shared[start] = set()
-#                shared[start].add(f)
-#        for uid, flows in shared.iteritems():
-#            start = self.top.find(uid)
-#            if not start.enabled(flows):
-#                return False
-#        return True
 
 #############################################################################
 #############################################################################

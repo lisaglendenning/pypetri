@@ -11,7 +11,7 @@ import examples.simple as simple
 
 class TestCaseSimple(tests.test_net.TestCaseNet):
     
-    Network = simple.SimpleNetwork
+    Network = simple.TokenNetwork
     
     def initialize(self, network):
         start = network[self.CONDITIONS[0]]

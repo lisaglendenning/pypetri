@@ -8,7 +8,7 @@ import examples.simple as simple
 # Net for a single light
 #
 
-class Light(simple.SimpleNetwork):
+class Light(simple.TokenNetwork):
     
     CONDITIONS = ["RED", "GREEN", "YELLOW",]
     TRANSITIONS = ["RED2GREEN", "GREEN2YELLOW", "YELLOW2RED",]
@@ -16,7 +16,6 @@ class Light(simple.SimpleNetwork):
     @classmethod
     def create(cls, *args, **kwargs):
         self = cls(*args, **kwargs)
-        self.conditions
         # arcs create a circular network
         self.zip(self.CONDITIONS, self.TRANSITIONS)
         self.zip(self.TRANSITIONS[-1:], self.CONDITIONS[0:1])
@@ -45,7 +44,7 @@ class Light(simple.SimpleNetwork):
 # Net composed of two light subnets
 #
 
-class FourWayIntersection(simple.SimpleNetwork):
+class FourWayIntersection(simple.TokenNetwork):
 
     # Global start state
     START = 'START'
