@@ -3,36 +3,40 @@
 
 import unittest
 
-import pypetri.hierarchy
+from pypetri import hierarchy
 
 #############################################################################
 #############################################################################
 
-class TestCaseHub(unittest.TestCase):
+class TestCaseNamable(unittest.TestCase):
     
-    def test_hub(self, N=4):
-        top = pypetri.hierarchy.Composer()
-        connectors = [pypetri.hierarchy.Connector(name=i) for i in xrange(N)]
-        for i, c in enumerate(connectors):
-            self.assertEqual(c.name, i)
-            top.add(c)
-        for c in connectors:
-            self.assertTrue(c is top.find(c.uid))
-            self.assertFalse(c.connected)
-        for i in xrange(0, N, 2):
-            c1 = connectors[i]
-            c2 = connectors[i+1]
-            c1.connect(c2)
-            self.assertTrue(c1.connected)
-            self.assertTrue(c2.connected)
-            self.assertTrue(c1.peer is c2)
-            self.assertTrue(c2.peer is c1)
-        for i in xrange(0, N, 2):
-            c1 = connectors[i]
-            c2 = connectors[i+1]
-            c1.disconnect()
-            self.assertFalse(c1.connected)
-            self.assertFalse(c2.connected)
+    def Namable(self, cls, *args, **kwargs):
+        named = cls(*args, **kwargs)
+        self.assertTrue(named.top is named)
+        self.assertTrue(named.domain is None)
+        return named
+    
+    def test_namespace(self, N=2):
+        top = self.Namable(hierarchy.Namespace)
+        self.assertFalse(top.name)
+        
+        nodes = [self.Namable(hierarchy.Namable, name=i) for i in xrange(1, N+1)]
+        for i, x in enumerate(nodes):
+            self.assertEqual(x.name, i+1)
+            top.add(x)
+            self.assertTrue(x.name in top)
+            self.assertTrue(x.domain is top)
+            self.assertTrue(x.top is top)
+            self.assertTrue(x is top.find(x.uid))
+        
+        links = [self.Namable(hierarchy.Link, name=i) for i in xrange(-1, -N, -1)]
+        for x in links:
+            self.assertFalse(x.connected)
+        for i in xrange(len(links)):
+            link = links[i]
+            link.left = nodes[i]
+            link.right = nodes[i+1]
+            self.assertTrue(link.connected)
 
 #############################################################################
 #############################################################################

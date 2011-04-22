@@ -1,47 +1,56 @@
 # @copyright
 # @license
 
+from __future__ import absolute_import
+
 import collections
 
-import pypetri.trellis as trellis
+from . import trellis
 
 #############################################################################
 #############################################################################
 
-class Namespace(collections.Hashable, trellis.Component):
+class Namable(collections.Hashable, trellis.Component):
 
     SUB_TOKEN = '.'
+    TEMPLATE = '<%s>'
     
     name = trellis.make(str)
     domain = trellis.attr(None)
-    
-    def __init__(self, **kwargs):
-        trellis.Component.__init__(self, **kwargs)
-    
-    def __hash__(self):
-        return hash(self.name)
-    
+
     def __cmp__(self, other):
-        n1 = self.name
-        if other is None:
-            n2 = ''
-        else:
-            n2 = other.name
-        return cmp(n1, n2)
+        if other is not None:
+            other = str(other)
+        return cmp(str(self), other)
     
     def __eq__(self, other):
-        if isinstance(other, Namespace):
+        if isinstance(other, self.__class__):
             return self.uid == other.uid
         return False
     
     @trellis.maintain
+    def __str__(self):
+        value = str(self.name)
+        return lambda: value
+    
+    @trellis.maintain
+    def __hash__(self):
+        value = hash(self.name)
+        return lambda: value
+    
+    def join(self, *names):
+        return self.SUB_TOKEN.join([str(n) for n in names if n])
+
+    def split(self, name):
+        return name.split(self.SUB_TOKEN, 1)
+    
+    @trellis.maintain
     def uid(self):
-        name = str(self.name)
-        if self.domain is not None:
-            super = self.domain.uid
-            if super:
-                name = self.domain.SUB_TOKEN.join((super, name))
-        return name
+        domain = self.domain
+        if domain is None:
+            return self.join(self.name)
+        else:
+            return domain.join(domain.uid, self.name)
     
     @trellis.maintain
     def enclosures(self):
@@ -49,99 +58,105 @@ class Namespace(collections.Hashable, trellis.Component):
             return tuple([self.domain] + list(self.domain.enclosures))
         return tuple()
     
-    top = property(lambda self: self.enclosures[-1] if self.enclosures else self)
+    @trellis.maintain
+    def top(self):
+        if self.domain is None:
+            return self
+        return self.domain.top
 
-    def __str__(self):
-        text = "<%s %s>" \
-               % (self.__class__.__name__, 
-                  self.uid)
-        return text
-        
     def __repr__(self):
-        text = "<%s name:%r, domain:%r>" \
-               % (self.__class__.__name__, 
-                  self.name, self.domain)
-        return text
+        text = self.__class__.__name__
+        keys = set([k for k in self.__dict__ if not k.startswith('_')])
+        keys.update([k for k in self.__cells__ if not k.startswith('_')])
+        if keys:
+            attrs = [':'.join((k, str(getattr(self, k)))) for k in keys]
+            text += ' ' + ', '.join(attrs)
+        return self.TEMPLATE % text
     
 #############################################################################
 #############################################################################
 
-class Connector(Namespace):
+class Link(Namable):
 
-    peer = trellis.attr(None)
-    
-    @trellis.modifier
-    def connect(self, other):
-        if self.connected or other.connected:
-            raise RuntimeError((self, other))
-        self.peer = other
-        other.peer = self
-    
-    @trellis.modifier
-    def disconnect(self):
-        if not self.connected:
-            raise RuntimeError(self)
-        peer = self.peer
-        if peer.peer is not self:
-            raise RuntimeError((self, peer))
-        self.peer = None
-        peer.peer = None
-        
+    left = trellis.attr(None)
+    right = trellis.attr(None)
+
+    def find(self, name):
+        for namable in self.left, self.right:
+            if namable is not None and namable.name == name:
+                return namable
+        return None
+
     @trellis.maintain
     def connected(self):
-        return self.peer is not None
+        return None not in (self.left, self.right,)
         
 #############################################################################
 #############################################################################
 
-class Composer(collections.Mapping, Namespace):
+class Namespace(Namable, collections.MutableMapping):
+    
+    named = trellis.make(trellis.Dict)
 
-    def __init__(self, **kwargs):
-        Namespace.__init__(self, **kwargs)
-        self.contains = trellis.Dict()
+    def __init__(self, named=(), **kwargs):
+        Namable.__init__(self, named=trellis.Dict(named), **kwargs)
+
+    def __eq__(self, other):
+        return Namable.__eq__(self, other) and collections.Mapping.__eq__(self, other)
     
-    def __hash__(self):
-        return Namespace.__hash__(self)
-    
-    def __cmp__(self, other):
-        return Namespace.__cmp__(self, other)
+    def __contains__(self, name):
+        if not isinstance(name, str):
+            name = str(name)
+        return name in self.named
     
     def __getitem__(self, name):
-        return self.contains[name]
+        if not isinstance(name, str):
+            name = str(name)
+        return self.named[name]
     
+    @trellis.modifier
+    def __setitem__(self, name, namable):
+        if not isinstance(name, str):
+            name = str(name)
+        if name in self:
+            del self[name]
+        self.named[name] = namable
+        namable.domain = self
+    
+    @trellis.modifier
+    def __delitem__(self, name):
+        if not isinstance(name, str):
+            name = str(name)
+        if name not in self:
+            raise KeyError
+        else:
+            namable = self[name]
+            namable.domain = None
+            del self[name]
+        
     def __len__(self):
-        return len(self.contains)
+        return len(self.named)
     
     def __iter__(self):
-        for k in self.contains:
+        for k in self.named:
             yield k
 
     def find(self, name):
-        names = name.split(self.SUB_TOKEN, 1)
+        names = self.split(name)
         next = names[0]
         if next not in self:
-            raise KeyError(next)
-        contained = self.contains[next]
+            return None
+        next = self[next]
         if len(names) > 1:
-            return contained.find(names[1])
+            return next.find(names[1])
         else:
-            return contained
+            return next
 
-    @trellis.modifier
-    def add(self, contained):
-        name = str(contained.name)
-        if name in self:
-            raise ValueError("Non-unique component name: %s" % contained)
-        self.contains[name] = contained
-        contained.domain = self
+    def add(self, namable):
+        self[namable.name] = namable
 
-    @trellis.modifier
-    def remove(self, contained):
-        name = str(contained.name)
-        if name not in self:
-            raise ValueError("Not contained: %s" % contained)
-        del self.contains[name]
-        contained.domain = None
+    def remove(self, namable):
+        del self[namable.name]
 
 #############################################################################
 #############################################################################
