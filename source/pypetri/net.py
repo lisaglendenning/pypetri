@@ -129,11 +129,11 @@ class Transition(Vertex):
             yield event
     
     @trellis.modifier                
-    def send(self, inputs, outputs=None):
+    def send(self, thunks, outputs=None):
         if outputs is None:
             outputs = self.outputs
-        for input in inputs:
-            input = input()
+        for thunk in thunks:
+            input = thunk()
             for output in outputs:
                 output.send(input)
 
@@ -146,9 +146,7 @@ class Network(trellis.Component):
     Condition = Condition
     Transition = Transition
 
-    def link(self, sequence=None, Arc=None, *args, **kwargs):
-        if sequence is None:
-            sequence = self.vertices
+    def link(self, sequence, Arc=None, *args, **kwargs):
         if Arc is None:
             Arc = self.Arc
         itr = iter(sequence)

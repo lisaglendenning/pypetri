@@ -12,6 +12,9 @@ from pypetri import net
 class TestCaseNet(unittest.TestCase):
     
     Network = net.Network
+    
+    def initialize(self, conditions):
+        conditions[0].marking = True
 
     def test_linear(self, N=2):
         network = self.Network()
@@ -31,7 +34,7 @@ class TestCaseNet(unittest.TestCase):
             # only empty events
             self.assertEqual(len(event.args[0]), 0)
         
-        conditions[0].send(True)
+        self.initialize(conditions)
         
         for i in xrange(N-1):
             print conditions[i].marking
