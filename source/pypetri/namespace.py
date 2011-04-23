@@ -18,13 +18,16 @@ class Namable(collections.Hashable, trellis.Component):
     name = trellis.make(str)
     domain = trellis.attr(None)
 
+    def isa(self, cls):
+        return isinstance(self, cls)
+
     def __cmp__(self, other):
         if other is not None:
             other = str(other)
         return cmp(str(self), other)
     
     def __eq__(self, other):
-        if isinstance(other, self.__class__):
+        if self.isa(other.__class__):
             return self.uid == other.uid
         return False
     
@@ -66,31 +69,12 @@ class Namable(collections.Hashable, trellis.Component):
 
     def __repr__(self):
         text = self.__class__.__name__
-        keys = set([k for k in self.__dict__ if not k.startswith('_')])
-        keys.update([k for k in self.__cells__ if not k.startswith('_')])
+        keys = 'uid',
         if keys:
             attrs = [':'.join((k, str(getattr(self, k)))) for k in keys]
             text += ' ' + ', '.join(attrs)
         return self.TEMPLATE % text
-    
-#############################################################################
-#############################################################################
 
-class Link(Namable):
-
-    left = trellis.attr(None)
-    right = trellis.attr(None)
-
-    def find(self, name):
-        for namable in self.left, self.right:
-            if namable is not None and namable.name == name:
-                return namable
-        return None
-
-    @trellis.maintain
-    def connected(self):
-        return None not in (self.left, self.right,)
-        
 #############################################################################
 #############################################################################
 
@@ -138,8 +122,7 @@ class Namespace(Namable, collections.MutableMapping):
         return len(self.named)
     
     def __iter__(self):
-        for k in self.named:
-            yield k
+        return iter(self.named)
 
     def find(self, name):
         names = self.split(name)
