@@ -3,7 +3,7 @@
 
 import unittest
 
-from pypetri import namespace
+from pypetri.collections import namespace
 
 #############################################################################
 #############################################################################
