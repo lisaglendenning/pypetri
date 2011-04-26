@@ -20,19 +20,24 @@ def brute(itr):
         except StopIteration:
             pass
         else:
+            items = [i for i in next]
+            for item in items:
+                yield [item]
             rest = recursor(itr)
             for combo in rest:
-                for item in next:
+                if len(combo) == 0:
+                    continue
+                yield combo
+                for item in items:
                     yield [item] + combo
-        finally:
-            yield []
     for combo in recursor(itr):
         yield combo
 
 #############################################################################
 #############################################################################
 
-Event = functools.partial
+class Event(functools.partial):
+    pass
 
 #############################################################################
 #############################################################################
@@ -125,6 +130,9 @@ class Transition(Vertex):
                 yield i.next(*args, **kwargs)
             
         for events in search(space()):
+            # ignore empty events
+            if len(events) == 0:
+                continue
             event = self.Event(output, events,)
             yield event
     
@@ -146,28 +154,6 @@ class Network(trellis.Component):
     Condition = Condition
     Transition = Transition
 
-    def link(self, sequence, Arc=None, *args, **kwargs):
-        if Arc is None:
-            Arc = self.Arc
-        itr = iter(sequence)
-        pair = None, itr.next()
-        while True:
-            pair = [self[x] if isinstance(x, str) else x for x in pair[1], itr.next()]
-            if pair[0] in self.vertices:
-                if pair[1] in self.vertices:
-                    # need to create a new arc
-                    arc = Arc(*args, **kwargs)
-                    self.arcs.add(arc)
-                    pair[0].outputs.add(arc)
-                    pair[1].inputs.add(arc)
-                    yield arc
-                else:
-                    pair[0].outputs.add(pair[1])
-            elif pair[1] in self.vertices:
-                pair[1].inputs.add(pair[0])
-            else:
-                pair[1].input, pair[0].output = pair
-    
     arcs = trellis.make(trellis.Set)
     vertices = trellis.make(trellis.Set)
     
@@ -177,6 +163,29 @@ class Network(trellis.Component):
                 kwargs[k] = trellis.Set(kwargs[k])
         super(Network, self).__init__(*args, **kwargs)
 
+    def link(self, sequence, Arc=None, *args, **kwargs):
+        if Arc is None:
+            Arc = self.Arc
+        itr = iter(sequence)
+        pair = None, itr.next()
+        # FIXME: this typechecking may not be the best approach?
+        while True:
+            pair = pair[1], itr.next()
+            if not isinstance(pair[0], self.Arc):
+                if not isinstance(pair[1], self.Arc):
+                    # need to create a new arc
+                    arc = Arc(*args, **kwargs)
+                    self.arcs.add(arc)
+                    pair[0].outputs.add(arc)
+                    pair[1].inputs.add(arc)
+                    yield arc
+                else:
+                    pair[0].outputs.add(pair[1])
+            elif not isinstance(pair[1], self.Arc):
+                pair[1].inputs.add(pair[0])
+            else:
+                pair[1].input, pair[0].output = pair
+    
     def next(self, vertices=None, *args, **kwargs):
         if vertices is None:
             vertices = self.vertices

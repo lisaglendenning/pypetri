@@ -10,21 +10,20 @@ import examples.traffic_lights as traffic_lights
 
 class TestCaseTrafficLights(unittest.TestCase):
     
+    def initialized(self, network):
+        for light in network.lights:
+            events = [e for e in light.next(light.transitions)]
+            self.assertEqual(len(events), 1)
+    
     def test_example(self):
-        network = traffic_lights.create()
-        enabled = [e for e in network.peek()]
-        self.assertEqual(len(enabled), 2)
-        
-        for l in network.LIGHTS:
-            light = network.find(l)
-            
-            for t in light.TRANSITIONS:
-                enabled = [e for e in light.peek()]
-                self.assertEqual(len(enabled), 1)
-                output = network(enabled[0])
-
-        enabled = [e for e in network.peek()]
-        self.assertEqual(len(enabled), 2)
+        network = traffic_lights.Network()
+        self.initialized(network)
+        for light in network.lights:
+            for t in light.transitions:
+                events = [e for e in t.next()]
+                self.assertEqual(len(events), 1)
+                output = events[0]()
+        self.initialized(network)
 
 #############################################################################
 #############################################################################

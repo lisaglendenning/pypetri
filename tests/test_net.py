@@ -30,24 +30,21 @@ class TestCaseNet(unittest.TestCase):
         arcs = [a for a in network.link(sequence)]
         self.assertEqual(len(arcs), N)
 
-        for event in network.next(transitions):
-            # only empty events
-            self.assertEqual(len(event.args[0]), 0)
+        events = [e for e in network.next(transitions)]
+        self.assertEqual(len(events), 0)
         
         self.initialize(conditions)
         
         for i in xrange(N-1):
-            print conditions[i].marking
             transition = transitions[i]
-            events = [e for e in transition.next() if len(e.args[0])]
+            events = [e for e in transition.next()]
             self.assertEqual(len(events), 1)
             events[0]()
             self.assertFalse(conditions[i].marking)
             self.assertTrue(conditions[i+1].marking)
             
-        for event in network.next(transitions):
-            # only empty events
-            self.assertEqual(len(event.args[0]), 0)
+        events = [e for e in network.next(transitions)]
+        self.assertEqual(len(events), 0)
 
         return network
 

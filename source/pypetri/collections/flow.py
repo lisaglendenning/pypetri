@@ -17,7 +17,7 @@ def bounded(count, minimum=None, maximum=None):
         
 def decreasing(count, minimum=None, maximum=None, step=-1):
         stop = 0 if minimum is None else minimum
-        start = count if maximum is None else max(maximum, count)
+        start = count if maximum is None else min(maximum, count)
         for i in xrange(start, stop, step):
             yield i
     
@@ -108,6 +108,14 @@ class Counter(net.Condition):
 
 class Conserve(net.Transition):
     r"""Conserves total flow from inputs to outputs."""
+    
+    predicate = trellis.attr(None)
+    
+    def __init__(self, predicate=None, *args, **kwargs):
+        if predicate is None:
+            predicate = lambda flow: bounded(flow, minimum=self.minimum, maximum=self.maximum)
+        super(Conserve, self).__init__(*args, predicate=predicate, **kwargs)
+        
 
     @trellis.maintain
     def minimum(self): # FIXME: optimize
@@ -126,10 +134,11 @@ class Conserve(net.Transition):
         return demand
 
     def next(self, *args, **kwargs):
-        for event in super(Conserve, self).next(*args, **kwargs): 
+        predicate = self.predicate
+        for event in super(Conserve, self).next(*args, **kwargs):
             flows = event.args[0]
             inflow = sum([flow.args[0] for flow in flows])
-            if bounded(inflow, minimum=self.minimum, maximum=self.maximum):
+            if predicate(inflow):
                 yield event
 
     @trellis.modifier
