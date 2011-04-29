@@ -3,26 +3,23 @@
 
 import pypetri.graph.net
 
-import tests.test_net
+from .. import test_net
 
 
 #############################################################################
 #############################################################################
 
 
-class TestCaseNetGraph(tests.test_net.TestCaseNet):
+class TestCaseNetGraph(test_net.TestCaseNet):
     
-    def test_linear(self, network=None, conditions=None, transitions=None):
-        if network is None:
-            network = self.Network()
-        if conditions is None:
-            conditions = self.CONDITIONS
-        if transitions is None:
-            transitions = self.TRANSITIONS
-        self.linearize(network, conditions, transitions)
-        self.initialize(network)
+    def test_linear(self, N=2):
+        network, conditions, transitions, arcs = self.build(N)
+        self.initialize(conditions)
 
-        graph = pypetri.graph.net.NetworkGraph(network)
+        graphed = pypetri.graph.net.GraphNetwork(network)
+        g = graphed.snapshot()
+        self.assertEqual(g.order(), 2*N-1)
+        self.assertEqual(g.size(), 2*N-2)
 
 #############################################################################
 #############################################################################

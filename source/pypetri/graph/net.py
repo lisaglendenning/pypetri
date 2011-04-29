@@ -3,106 +3,149 @@
 
 import networkx as nx
 
-import pypetri.trellis as trellis
+from .. import trellis
 
-import pypetri.net as pnet
-import pypetri.graph.graph as pgraph
+from .. import net
+from . import graph
 
 #############################################################################
 #############################################################################
 
-class NetworkGraph(trellis.Component):
+class GraphNetwork(trellis.Component):
+    r"""Petri net components must have a unique string value."""
+    
+    Arc = net.Arc
+    Vertex = net.Vertex
+    Network = net.Network
 
     Graph = nx.MultiDiGraph
     
     net = trellis.attr(None)
     graph = trellis.attr(None)
     
-    ROLES = 'arc', 'transition', 'condition', 'network',
-    ARC, TRANSITION, CONDITION, NETWORK, = ROLES
-    LABELS = 'name', 'role', 'subgraph'
-    NAME, ROLE, SUBGRAPH, = LABELS
+    def __init__(self, net, g=None, *args, **kwargs):
+        if g is None:
+            g = self.Graph(*args, name=str(net), **kwargs)
+            g = graph.Graph(graph=g)
+        super(GraphNetwork, self).__init__(*args, net=net, graph=g, **kwargs)
     
-    def __init__(self, net, graph=None, *args, **kwargs):
-        if graph is None:
-            graph = self.Graph(*args, name=net.name, **kwargs)
-            graph = pgraph.Graph(graph=graph)
-        super(NetworkGraph, self).__init__(net=net, graph=graph)
-    
+    def find(self, node):
+        if node in self.vertices:
+            return self.vertices[node]
+        for subgraph in self.subgraphs.itervalues():
+            v = subgraph.find(node)
+            if v is not None:
+                return v
+        return None
     
     @trellis.maintain
     def subgraphs(self):
-        if self.net is None or self.net.networks is None:
+        if self.net is None or not self.vertices:
             return {}
-        current = set(self.subgraphs.values()) if self.subgraphs is not None else set()
-        updated = self.net.networks
-        new = {}
-        for net in updated:
-            if net.name in current:
-                subgraph = current[net.name]
-            else:
-                subgraph = self.__class__(net)
-            new[net.name] = subgraph
-        return new
+        vertices = self.vertices
+        current = self.subgraphs if self.subgraphs is not None else {}
+        removed = [k for k in current if k not in vertices or vertices[k] is not current[k]]
+        for k in removed:
+            del current[k]
+        for k,v in vertices.iteritems():
+            if k in current or not isinstance(v, self.Network):
+                continue
+            subgraph = self.__class__(v)
+            current[k] = subgraph
+        return current
     
     @trellis.maintain
     def edges(self):
-        if self.net is None or self.net.arcs is None:
-            return set()
-        current = self.edges if self.edges is not None else set()
-        new = set()
-        for arc in self.net.arcs:
-            nodes = [arc.source, arc.sink]
-            if None in nodes:
-                continue
-            for i in xrange(len(nodes)):
-                while nodes[i].domain is not self.net:
-                    assert nodes[i].domain is not None
-                    nodes[i] = nodes[i].domain
-            nodes = tuple([n.name for n in nodes])
-            attrs = {self.ROLE: self.ARC, self.NAME: arc.name, }
-            if nodes not in current:
-                if nodes[0] not in self.graph or nodes[1] not in self.graph:
-                    continue
-                self.graph.add_edge(*nodes, **attrs)
+        if self.net is None or not self.net.arcs:
+            self.graph.remove_edges_from(self.graph.edges())
+            return {}
+        arcs = self.net.arcs
+        current = self.edges if self.edges is not None else {}
+        new = {}
+        for arc in arcs:
+            vertices = [None, None]
+            for i,v in enumerate((arc.input, arc.output,)):
+                while v is not None:
+                    if isinstance(v, self.Vertex):
+                        break
+                    v = v.input
+                if v is not None:
+                    node = str(v)
+                    if node not in self.vertices:
+                        for subgraph in self.subgraphs.itervalues():
+                            if subgraph.find(node) is not None:
+                                v = subgraph
+                                break
+                        else:
+                            v = None
+                if v is None:
+                    break
+                vertices[i] = str(v)
             else:
-                if self.graph.edge[nodes[0]][nodes[1]] != attrs:
-                    self.graph.edge[nodes[0]][nodes[1]].update(attrs)
-            new.add(nodes)
-        removed = current - new
-        self.graph.remove_edges_from(removed)
-        return new
+                vertices = tuple(vertices)
+                edge = str(arc)
+                new[edge] = vertices
+        removed = [k for k in current if k not in new or current[k] != new[k]]
+        self.graph.remove_edges_from([current[k] for k in removed])
+        for k in removed:
+            del current[k]
+        for k,v in new.iteritems():
+            if k not in current or v != current[k]:
+                for u in v:
+                    if u not in self.vertices:
+                        break
+                else:
+                    self.graph.add_edge(*v)
+                    current[k] = v
+        return current
         
     @trellis.maintain
     def vertices(self):
-        if self.net is None or None in (self.net.transitions, self.net.conditions, self.net.networks,):
-            return set()
-        current = self.vertices if self.vertices is not None else set()
-        new = set()
-        for vertices, label in ((self.net.transitions, self.TRANSITION),
-                                (self.net.conditions, self.CONDITION),
-                                (self.net.networks, self.NETWORK),):
-            for vertex in vertices:
-                vertex = vertex.name
-                attrs = {self.ROLE: label, self.NAME: vertex, }
-                if vertex not in current:
-                    self.graph.add_node(vertex, **attrs)
-                else:
-                    if self.graph.node[vertex] != attrs:
-                        self.graph.node[vertex].update(attrs)
-                new.add(vertex)
-        removed = current - new
+        if self.net is None or not self.net.vertices:
+            self.graph.remove_nodes_from(self.graph.nodes())
+            return {}
+        vertices = self.net.vertices
+        current = self.vertices if self.vertices is not None else {}
+        removed = [k for k,v in current.iteritems() if v not in vertices]
         self.graph.remove_nodes_from(removed)
-        return new
+        for k in removed:
+            del current[k]
+        for v in vertices:
+            node = str(v)
+            if node not in current:
+                current[node] = v
+                self.graph.add_node(node)
+        trellis.mark_dirty()
+        return current
                       
-    def snapshot(self):
-        graph = self.graph.snapshot()
+    def snapshot(self, flatten=True):
+        g = self.graph.snapshot()
         
-        for name, sub in self.subgraphs.iteritems():
-            subgraph = sub.snapshot()
-            graph.node[name][self.SUBGRAPH] = subgraph
-        
-        return graph
+        if flatten:
+            subgraphs = {}
+            for name, subgraph in self.subgraphs.iteritems():
+                subgraphs[name] = subgraph.snapshot(flatten)
+            
+            for name, subgraph in subgraphs.iteritems():
+                # add nodes
+                for u in subgraph:
+                    if u in g:
+                        raise ValueError("non-unique node name: %s" % u)
+                    g.add_node(u) 
+                    
+                # add edges
+                g.add_edges_from(subgraph.edges_iter())
+                
+                # replace edges to subgraph
+                for arc in self.net.arcs:
+                    edge = self.edges[str(arc)]
+                    if name not in edge:
+                        continue
+                    vertices = [str(u) for u in (arc.input, arc.output,)]
+                    edge = [x if x in g else y for x,y in zip(vertices, edge)]
+                    g.add_edge(*edge)
+                g.remove_node(name)
+        return g
 
 
 #############################################################################

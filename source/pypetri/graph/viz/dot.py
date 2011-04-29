@@ -2,16 +2,19 @@
 import pypetri.graph.net
 
 SHAPE = 'shape'
-SHAPES = { pypetri.graph.net.NetworkGraph.CONDITION: 'ellipse', 
-           pypetri.graph.net.NetworkGraph.TRANSITION: 'box',
-           pypetri.graph.net.NetworkGraph.NETWORK: 'doubleoctagon',
+SHAPES = { 'Condition': 'ellipse', 
+           'Transition': 'box',
+           'Network': 'doubleoctagon',
          }
 
-def markup(network, graph=None):
+def markup(network, graph=None, shapes=None):
+    if shapes is None:
+        shapes = SHAPES
     if graph is None:
         graph = network.snapshot()
     for u in graph:
-        role = graph.node[u][pypetri.graph.net.NetworkGraph.ROLE]
-        if role in SHAPES:
-            graph.node[u][SHAPE] = SHAPES[role]
+        v = network.vertices[u]
+        for role in [getattr(network.net, k) for k in shapes]:
+            if isinstance(v, role):
+                graph.node[SHAPE] = shapes[role]
     return graph
