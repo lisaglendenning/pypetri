@@ -36,7 +36,7 @@ class Light(flow.Network):
         arcs = []
         for i in xrange(len(self.conditions)):
             j = i+1 if i < len(self.conditions)-1 else 0
-            for arc in self.link((self.conditions[i], self.transitions[i], self.conditions[j],)):
+            for arc in self.chain((self.conditions[i], self.transitions[i], self.conditions[j],)):
                 arcs.append(arc)
         
         # and, initial marking
@@ -81,8 +81,7 @@ class FourWayIntersection(flow.Network):
             pairs = ((start, light.transitions[0]),
                      (light.transitions[-1], start,),)
             for pair in pairs:
-                for arc in self.link(pair):
-                    arcs.append(arc)
+                arcs.append(self.link(*pair))
 
         # and, initial marking
         self.conditions[0].marking = 1

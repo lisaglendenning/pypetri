@@ -82,13 +82,15 @@ class Vertex(trellis.Component):
     outputs = trellis.make(trellis.Set)
     
     @trellis.maintain
-    def link(self): # FIXME: optimize
-        for input in self.inputs:
-            if input.output is not self:
-                input.output = self
-        for output in self.outputs:
-            if output.input is not self:
-                output.input = self
+    def links(self):
+        updates = (self.inputs, 'output'), (self.outputs, 'input'),
+        for collection, attr in updates:
+            for arc in collection.added:
+                if getattr(arc, attr) is not self:
+                    setattr(arc, attr, self)
+            for arc in collection.removed:
+                if getattr(arc, attr) is self:
+                    setattr(arc, attr, None)
 
 #############################################################################
 #############################################################################
@@ -163,9 +165,7 @@ class Network(trellis.Component):
                 kwargs[k] = trellis.Set(kwargs[k])
         super(Network, self).__init__(*args, **kwargs)
 
-    def link(self, sequence, Arc=None, *args, **kwargs):
-        if Arc is None:
-            Arc = self.Arc
+    def chain(self, sequence, *args, **kwargs):
         itr = iter(sequence)
         pair = None, itr.next()
         # FIXME: this typechecking may not be the best approach?
@@ -173,19 +173,24 @@ class Network(trellis.Component):
             pair = pair[1], itr.next()
             if not isinstance(pair[0], self.Arc):
                 if not isinstance(pair[1], self.Arc):
-                    # need to create a new arc
-                    arc = Arc(*args, **kwargs)
-                    self.arcs.add(arc)
-                    pair[0].outputs.add(arc)
-                    pair[1].inputs.add(arc)
-                    yield arc
+                    yield self.link(pair[0], pair[1], *args, **kwargs)
                 else:
                     pair[0].outputs.add(pair[1])
             elif not isinstance(pair[1], self.Arc):
                 pair[1].inputs.add(pair[0])
             else:
                 pair[1].input, pair[0].output = pair
-    
+        
+    @trellis.modifier
+    def link(self, source, sink, Arc=None, *args, **kwargs):
+        if Arc is None:
+            Arc = self.Arc
+        arc = Arc(*args, **kwargs)
+        self.arcs.add(arc)
+        source.outputs.add(arc)
+        sink.inputs.add(arc)
+        return arc
+
     def next(self, vertices=None, *args, **kwargs):
         if vertices is None:
             vertices = self.vertices
