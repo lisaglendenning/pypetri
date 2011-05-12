@@ -60,14 +60,14 @@ class Arc(trellis.Component):
     def send(self):
         output = self.output
         if output is None:
-            return None
+            return lambda *args: None
         return output.send
 
     @trellis.maintain
     def next(self):
         input = self.input
         if input is None:
-            return None
+            return lambda *args: None
         return input.next
     
 #############################################################################
@@ -146,6 +146,14 @@ class Transition(Vertex):
             input = thunk()
             for output in outputs:
                 output.send(input)
+    
+    # shortcut for executing the first default event
+    def __call__(self, *args, **kwargs):
+        for event in self.next():
+            break
+        else: # no events
+            raise RuntimeError(self)
+        return event(*args, **kwargs)
 
 #############################################################################
 #############################################################################

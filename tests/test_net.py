@@ -24,7 +24,7 @@ class TestCaseNet(unittest.TestCase):
             sequence.extend(pair)
         # and, since the lengths are uneven, the last condition
         sequence.append(conditions[-1])
-        arcs = [a for a in network.link(sequence)]
+        arcs = [a for a in network.chain(sequence)]
         self.assertEqual(len(arcs), N)
         
         return network, conditions, transitions, arcs
