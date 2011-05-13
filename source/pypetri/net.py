@@ -9,7 +9,10 @@ import functools
 
 from . import trellis
 
+from .circuit import *
+
 #############################################################################
+# Utility functions
 #############################################################################
 
 def brute(itr):
@@ -42,60 +45,55 @@ class Event(functools.partial):
 #############################################################################
 #############################################################################
 
-class Arc(trellis.Component):
-    """Directional link."""
+class Arc(Pipe):
+    """Directional link between vertices."""
 
-    input = trellis.attr(None)
-    output = trellis.attr(None)
-    
-    @trellis.maintain
+    @trellis.compute
     def ports(self):
         return (self.input, self.output,)
         
-    @trellis.maintain
+    @trellis.compute
     def connected(self):
         return None not in self.ports
 
-    @trellis.maintain
-    def send(self):
-        output = self.output
-        if output is None:
-            return lambda *args: None
-        return output.send
-
-    @trellis.maintain
-    def next(self):
-        input = self.input
-        if input is None:
-            return lambda *args: None
-        return input.next
     
 #############################################################################
 #############################################################################
 
-class Vertex(trellis.Component):
+class Vertex(Switch):
     """Has a set of input Arcs and a set of output Arcs."""
     
     Event = Event
+
+    # TODO: is this buggy?
+    @trellis.maintain(make=trellis.Set) # FIXME: DRY
+    def inputs(self):
+        inputs = self.inputs
+        for input in inputs.added:
+            if input.output is not self:
+                input.output = self
+        for input in inputs.removed:
+            if input.output is self:
+                input.output = None
+        return inputs
     
-    inputs = trellis.make(trellis.Set)
-    outputs = trellis.make(trellis.Set)
-    
-    @trellis.maintain
-    def links(self):
-        updates = (self.inputs, 'output'), (self.outputs, 'input'),
-        for collection, attr in updates:
-            for arc in collection.added:
-                if getattr(arc, attr) is not self:
-                    setattr(arc, attr, self)
-            for arc in collection.removed:
-                if getattr(arc, attr) is self:
-                    setattr(arc, attr, None)
+    # TODO: is this buggy?
+    @trellis.maintain(make=trellis.Set) # FIXME: DRY
+    def outputs(self):
+        outputs = self.outputs
+        for output in outputs.added:
+            if output.input is not self:
+                output.input = self
+        for output in outputs.removed:
+            if output.input is self:
+                output.input = None
+        return outputs
 
 #############################################################################
 #############################################################################
 
 class Condition(Vertex):
+    r"""Simple condition that either has some marking or has no marking."""
 
     marking = trellis.attr(None)
 
@@ -110,8 +108,12 @@ class Condition(Vertex):
 #############################################################################
 #############################################################################
 
-class Transition(Vertex):
-                    
+    
+class Serializer(Multiplexer):
+    """Simple multiplexer that iterates over inputs."""
+    
+    Event = Event
+    
     def next(self, search=None, inputs=None, output=None, *args, **kwargs):
         """Returns an iterator over a set of enabling Events.
         
@@ -135,17 +137,86 @@ class Transition(Vertex):
             # ignore empty events
             if len(events) == 0:
                 continue
-            event = self.Event(output, events,)
+            event = self.Event(output, input=None, inputs=events,)
             yield event
+
+    @trellis.modifier
+    def send(self, input=None, inputs=None, *args, **kwargs):
+        push = self.output.send
+        if input is not None:
+            push(input, *args, **kwargs)
+        if inputs is not None:
+            for i in inputs:
+                push(i, *args, **kwargs)
+        if input is None and inputs is None:
+            push(*args, **kwargs)
+            
+class Tee(Demultiplexer):
+    """Copies an input to all outputs."""
     
-    @trellis.modifier                
-    def send(self, thunks, outputs=None):
+    Event = Event
+    
+    @trellis.modifier
+    def send(self, input, outputs=None, *args, **kwargs):
         if outputs is None:
             outputs = self.outputs
-        for thunk in thunks:
-            input = thunk()
-            for output in outputs:
-                output.send(input)
+        for output in outputs:
+            output.send(input, *args, **kwargs)
+
+
+class Exec(Pipe):
+    """Pipe operator that executes a function sent to it."""
+        
+    Event = Event
+    
+    @trellis.modifier
+    def send(self, thunk, *args, **kwargs):
+        output = thunk(*args, **kwargs)
+        super(Exec, self).send(output)
+        
+class Transition(Vertex):
+    """Simple three-step pipeline of operators."""
+    
+    @trellis.maintain(make=Serializer)
+    def mux(self):
+        mux = self.mux
+        if mux.inputs is not self.inputs:
+            mux.inputs = self.inputs
+        if mux.output is not self.pipe:
+            mux.output = self.pipe
+        return mux
+    
+    @trellis.maintain(make=Tee)
+    def demux(self):
+        demux = self.demux
+        if demux.input is not self.pipe:
+            demux.input = self.pipe
+        if demux.outputs is not self.outputs:
+            demux.outputs = self.outputs
+        return demux
+    
+    @trellis.maintain(make=Exec)
+    def pipe(self):
+        pipe = self.pipe
+        if pipe.input is not self.mux:
+            pipe.input = self.mux
+        if pipe.output is not self.demux:
+            pipe.output = self.demux
+        return pipe
+    
+    @trellis.compute
+    def next(self,):
+        try:
+            return self.demux.next
+        except AttributeError:
+            return nada
+
+    @trellis.compute                
+    def send(self, thunks, outputs=None):
+        try:
+            return self.mux.send
+        except AttributeError:
+            return nada
     
     # shortcut for executing the first default event
     def __call__(self, *args, **kwargs):
