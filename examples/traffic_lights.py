@@ -29,19 +29,21 @@ class Light(flow.Network):
     def __init__(self, *args, **kwargs):
         names = self.CONDITIONS
         for v in names:
-            if v.lower() not in kwargs:
+            attr = v.lower()
+            if attr not in kwargs:
                 capacity = 1 if v == names[0] else 2
                 marking = 1 if v == names[0] else 0
                 condition = self.Condition(minimum=0, maximum=capacity, marking=marking,)
-                kwargs[v.lower()] = condition
+                kwargs[attr] = condition
         names = self.TRANSITIONS
         for v in names:
-            if v.lower() not in kwargs:
+            attr = v.lower()
+            if attr not in kwargs:
                 transition = self.Transition()
-                mux = transition.mux
-                predicate = types.MethodType(lambda self, flow: flow == self.maximum, mux, mux.__class__)
-                transition.mux.predicate = predicate
-                kwargs[v.lower()] = transition
+                demux = transition.demux
+                predicate = types.MethodType(lambda self, flow: flow == self.maximum, demux, demux.__class__)
+                transition.demux.predicate = predicate
+                kwargs[attr] = transition
         super(Light, self).__init__(*args, **kwargs)
         conditions = []
         transitions = []
@@ -49,14 +51,16 @@ class Light(flow.Network):
             for name in names:
                 v = getattr(self, name.lower())
                 ls.append(v)
-                self.vertices.add(v)
 
         # arcs create a circular network
         for i in xrange(len(conditions)):
             j = i+1 if i < len(conditions)-1 else 0
-            chain = (conditions[i], transitions[i], conditions[j],)
-            for arc in self.chain(chain):
-                pass
+            pair = conditions[i], transitions[i]
+            arc = self.Arc()
+            arc.link(*pair)
+            pair = transitions[i], conditions[j]
+            arc = self.Arc()
+            arc.link(*pair)
 
 
 #############################################################################
@@ -71,28 +75,30 @@ class Intersection(flow.Network):
     # Global start state
     CONDITIONS = ['START',]
 
-    start = trellis.attr(None)
+    start = trellis.make(None)
     lights = trellis.make(trellis.Set)
 
     def __init__(self, ways=2, *args, **kwargs):
         for name in self.CONDITIONS:
-            if name.lower() not in kwargs:
+            attr = name.lower()
+            if attr not in kwargs:
                 capacity = 1
                 marking = 1
                 condition = self.Condition(minimum=0, maximum=capacity, marking=marking)
-                kwargs[name.lower()] = condition
-        if 'lights' not in kwargs:
-            kwargs['lights'] = trellis.Set([Light() for i in xrange(ways)])
+                kwargs[attr] = condition
+        attr = 'lights'
+        if attr not in kwargs:
+            kwargs[attr] = trellis.Set([Light() for i in xrange(ways)])
         super(Intersection, self).__init__(*args, **kwargs)
-        self.vertices.add(self.start)
-        for light in self.lights:
-            self.vertices.add(light)
         for light in self.lights:
             input = getattr(light, light.TRANSITIONS[-1].lower())
             output = getattr(light, light.TRANSITIONS[0].lower())
-            chain = (input, self.start, output,)
-            for arc in self.chain(chain):
-                pass
+            pair = input, self.start
+            arc = self.Arc()
+            arc.link(*pair)
+            pair = self.start, output
+            arc = self.Arc()
+            arc.link(*pair)
         
 #############################################################################
 #############################################################################

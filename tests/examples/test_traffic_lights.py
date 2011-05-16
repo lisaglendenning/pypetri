@@ -12,8 +12,7 @@ class TestCaseTrafficLights(unittest.TestCase):
     
     def initialized(self, network):
         for light in network.lights:
-            transitions = [getattr(light, name.lower()) for name in light.TRANSITIONS]
-            events = [e for e in light.next(transitions)]
+            events = [e for e in light.next()]
             self.assertEqual(len(events), 1)
     
     def test_example(self):
@@ -24,7 +23,7 @@ class TestCaseTrafficLights(unittest.TestCase):
             for t in transitions:
                 events = [e for e in t.next()]
                 self.assertEqual(len(events), 1)
-                output = events[0]()
+                output = t()
         self.initialized(network)
 
 #############################################################################

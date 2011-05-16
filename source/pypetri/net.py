@@ -1,11 +1,12 @@
 # @copyright
 # @license
 
-# TODO: could probably improve the code using itertools?
+r"""Petri Net base."""
 
 from __future__ import absolute_import
 
 import functools
+import collections
 
 from . import trellis
 
@@ -55,6 +56,11 @@ class Arc(Pipe):
     @trellis.compute
     def connected(self):
         return None not in self.ports
+    
+    @trellis.modifier
+    def link(self, source, sink):
+        source.outputs.add(self)
+        sink.inputs.add(self)
 
     
 #############################################################################
@@ -97,7 +103,13 @@ class Condition(Vertex):
 
     marking = trellis.attr(None)
 
-    def send(self, marking=None):
+    def send(self, marking=None, *args, **kwargs):
+        if marking is not None:
+            if isinstance(marking, collections.Iterable):
+                for marking in marking:
+                    return self.send(marking, *args, **kwargs)
+            elif isinstance(marking, collections.Callable):
+                marking = marking(*args, **kwargs)
         marking, self.marking = self.marking, marking
         return marking
 
@@ -107,10 +119,9 @@ class Condition(Vertex):
     
 #############################################################################
 #############################################################################
-
     
-class Serializer(Multiplexer):
-    """Simple multiplexer that iterates over inputs."""
+class Combinator(Multiplexer):
+    """Iterates over all possible inputs."""
     
     Event = Event
     
@@ -137,24 +148,14 @@ class Serializer(Multiplexer):
             # ignore empty events
             if len(events) == 0:
                 continue
-            event = self.Event(output, input=None, inputs=events,)
+            event = self.Event(output, events,)
             yield event
-
-    @trellis.modifier
-    def send(self, input=None, inputs=None, *args, **kwargs):
-        push = self.output.send
-        if input is not None:
-            push(input, *args, **kwargs)
-        if inputs is not None:
-            for i in inputs:
-                push(i, *args, **kwargs)
-        if input is None and inputs is None:
-            push(*args, **kwargs)
             
+#############################################################################
+#############################################################################
+
 class Tee(Demultiplexer):
     """Copies an input to all outputs."""
-    
-    Event = Event
     
     @trellis.modifier
     def send(self, input, outputs=None, *args, **kwargs):
@@ -162,22 +163,128 @@ class Tee(Demultiplexer):
             outputs = self.outputs
         for output in outputs:
             output.send(input, *args, **kwargs)
+        
+#############################################################################
+#############################################################################
 
+class Pipeline(Pipe, collections.Iterable,):
+    """Chain of pipe operators."""
+    
+    pipes = trellis.make(list) # TODO: linked list would be better
+    
+    @trellis.maintain
+    def _links(self):
+        pipes = self.pipes
+        npipes = len(pipes)
+        for i in xrange(npipes):
+            if i > 0:
+                input = pipes[i-1]
+            else:
+                input = self.input
+            if pipes[i].input is not input:
+                pipes[i].input = input
+            if i < npipes-1:
+                output = pipes[i+1]
+            else:
+                output = self.output
+            if pipes[i].output is not output:
+                pipes[i].output = output
+        return pipes
+    
+    def __nonzero__(self):
+        return len(self) > 0
+    
+    @trellis.compute
+    def __len__(self):
+        return self.pipes.__len__
+    
+    @trellis.compute
+    def __iter__(self):
+        return self.pipes.__iter__
+    
+    @trellis.compute
+    def __getitem__(self):
+        return self.pipes.__getitem__
+        
+    @trellis.modifier
+    def append(self, item):
+        pipes = self.pipes
+        pipes.append(item)
+        trellis.on_undo(self.pipes.pop)
+        if len(pipes) > 1:
+            input = pipes[-2]
+            prev = input.output
+            input.output = item
+            trellis.on_undo(setattr, input, 'output', prev,)
+        else:
+            input = self.input
+        prev = item.input
+        item.input = input
+        trellis.on_undo(setattr, item, 'input', prev,)
+        prev = item.output
+        item.output = self.output
+        trellis.on_undo(setattr, item, 'output', prev,)
+    
+    @trellis.compute
+    def __delitem__(self):
+        return self.pipes.__delitem__
+        
+    @trellis.compute
+    def insert(self):
+        return self.pipes.insert
+    
+    @trellis.compute
+    def send(self):
+        output = self[0] if len(self) else self.output
+        if output is not None:
+            return output.send
+        else:
+            return nada
+        
+    @trellis.compute
+    def next(self):
+        input = self[-1] if len(self) else self.input
+        if input is not None:
+            return input.next
+        else:
+            return nada
+
+#############################################################################
+#############################################################################
 
 class Exec(Pipe):
     """Pipe operator that executes a function sent to it."""
-        
-    Event = Event
     
     @trellis.modifier
     def send(self, thunk, *args, **kwargs):
         output = thunk(*args, **kwargs)
         super(Exec, self).send(output)
         
+class Iter(Pipe):
+    """Pipe operator that iterates over input."""
+
+    @trellis.modifier
+    def send(self, inputs, *args, **kwargs):
+        for input in inputs:
+            super(Iter, self).send(input, *args, **kwargs)
+
+class Apply(Pipe):
+    """Pipe operator that applies a function to its input."""
+    
+    fn = trellis.attr(None)
+    
+    @trellis.modifier
+    def send(self, input, *args, **kwargs):
+        output = self.fn(input, *args, **kwargs)
+        super(Apply, self).send(output)
+        
+#############################################################################
+#############################################################################
+
 class Transition(Vertex):
     """Simple three-step pipeline of operators."""
     
-    @trellis.maintain(make=Serializer)
+    @trellis.maintain(make=Combinator)
     def mux(self):
         mux = self.mux
         if mux.inputs is not self.inputs:
@@ -195,7 +302,7 @@ class Transition(Vertex):
             demux.outputs = self.outputs
         return demux
     
-    @trellis.maintain(make=Exec)
+    @trellis.maintain(make=Pipeline)
     def pipe(self):
         pipe = self.pipe
         if pipe.input is not self.mux:
@@ -231,12 +338,27 @@ class Transition(Vertex):
 
 class Network(trellis.Component):
 
-    Arc = Arc
-    Condition = Condition
-    Transition = Transition
+    @trellis.modifier
+    def Arc(self, *args, **kwargs):
+        arc = Arc(*args, **kwargs)
+        self.arcs.add(arc)
+        return arc
 
+    @trellis.modifier
+    def Condition(self, *args, **kwargs):
+        condition = Condition(*args, **kwargs)
+        self.conditions.add(condition)
+        return condition
+    
+    @trellis.modifier
+    def Transition(self, *args, **kwargs):
+        transition = Transition(*args, **kwargs)
+        self.transitions.add(transition)
+        return transition
+    
     arcs = trellis.make(trellis.Set)
-    vertices = trellis.make(trellis.Set)
+    transitions = trellis.make(trellis.Set)
+    conditions = trellis.make(trellis.Set)
     
     def __init__(self, *args, **kwargs):
         for k in 'arcs', 'vertices':
@@ -244,38 +366,20 @@ class Network(trellis.Component):
                 kwargs[k] = trellis.Set(kwargs[k])
         super(Network, self).__init__(*args, **kwargs)
 
-    def chain(self, sequence, *args, **kwargs):
-        itr = iter(sequence)
-        pair = None, itr.next()
-        # FIXME: this typechecking may not be the best approach?
-        while True:
-            pair = pair[1], itr.next()
-            if not isinstance(pair[0], self.Arc):
-                if not isinstance(pair[1], self.Arc):
-                    yield self.link(pair[0], pair[1], *args, **kwargs)
-                else:
-                    pair[0].outputs.add(pair[1])
-            elif not isinstance(pair[1], self.Arc):
-                pair[1].inputs.add(pair[0])
-            else:
-                pair[1].input, pair[0].output = pair
-        
-    @trellis.modifier
-    def link(self, source, sink, Arc=None, *args, **kwargs):
-        if Arc is None:
-            Arc = self.Arc
-        arc = Arc(*args, **kwargs)
-        self.arcs.add(arc)
-        source.outputs.add(arc)
-        sink.inputs.add(arc)
-        return arc
-
-    def next(self, vertices=None, *args, **kwargs):
-        if vertices is None:
-            vertices = self.vertices
-        for v in vertices:
-            for event in v.next(*args, **kwargs):
+    def next(self, transitions=None, *args, **kwargs):
+        if transitions is None:
+            transitions = self.transitions
+        for t in transitions:
+            for event in t.next(*args, **kwargs):
                 yield event
+    
+    @trellis.modifier
+    def __call__(self, *args, **kwargs):
+        for event in self.next():
+            break
+        else:
+            raise RuntimeError(self)
+        return event(*args, **kwargs)
 
 #############################################################################
 #############################################################################

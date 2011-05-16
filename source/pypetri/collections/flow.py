@@ -38,29 +38,6 @@ def roundrobin(total, capacities):
             capacity = min(total, capacity)
         total -= capacity
         yield x, capacity
-           
-#############################################################################
-#############################################################################
-
-class Bounded(net.Arc):
-     
-    @trellis.maintain
-    def minimum(self):
-        output = self.output
-        if isinstance(output, Counter):
-            minimum = output.minimum
-            if minimum:
-                minimum = minimum - output.marking
-            return minimum
-    
-    @trellis.maintain
-    def maximum(self):
-        output = self.output
-        if isinstance(output, Counter):
-            maximum = output.maximum
-            if maximum:
-                maximum = maximum - output.marking
-            return maximum
 
 #############################################################################
 #############################################################################
@@ -106,86 +83,70 @@ class Counter(net.Condition):
 #############################################################################
 #############################################################################
 
-class Threshold(net.Serializer):
+class Aggregate(net.Pipe):
+
+    def send(self, inputs, *args, **kwargs):
+        # sum all inputs
+        total = 0
+        for input in inputs:
+            total += input()
+        super(Aggregate, self).send(total, *args, **kwargs)
+
+#############################################################################
+#############################################################################
+
+class Gateway(net.Demultiplexer):
 
     predicate = trellis.attr(None)
     
     def __init__(self, predicate=None, *args, **kwargs):
         if predicate is None:
             predicate = lambda flow: bounded(flow, minimum=self.minimum, maximum=self.maximum)
-        super(Threshold, self).__init__(*args, predicate=predicate, **kwargs)
-
-    @trellis.compute
-    def minimum(self):
-        try:
-            return self.output.minimum
-        except AttributeError:
-            return None
-
-    @trellis.compute
-    def maximum(self):
-        try:
-            return self.output.maximum
-        except AttributeError:
-            return None
+        super(Gateway, self).__init__(*args, predicate=predicate, **kwargs)
         
+    @trellis.maintain
+    def minimum(self): # TODO: optimize?
+        outputs = self.outputs
+        if outputs is None:
+            return None
+        demand = 0
+        for output in outputs:
+            if not output.connected:
+                continue
+            output = output.output
+            minimum = output.minimum
+            if minimum:
+                if output.marking:
+                    minimum -= output.marking
+                demand += minimum
+        return demand
+    
+    @trellis.maintain
+    def maximum(self): # TODO: optimize?
+        outputs = self.outputs
+        if outputs is None:
+            return None
+        demand = 0
+        for output in outputs:
+            if not output.connected:
+                continue
+            output = output.output
+            maximum = output.maximum
+            if maximum is None:
+                return None
+            if maximum:
+                if output.marking:
+                    maximum -= output.marking
+                demand += maximum
+        return demand
+
     def next(self, *args, **kwargs):
         predicate = self.predicate
-        for event in super(Threshold, self).next(*args, **kwargs):
-            flows = event.keywords['inputs']
+        for event in super(Gateway, self).next(*args, **kwargs):
+            flows = event.args[0]
             inflow = sum([flow.args[0] for flow in flows])
             if predicate(inflow):
-                kw = dict(event.keywords)
-                kw['input'] = kw['inputs']
-                del kw['inputs']
-                yield event.__class__(event.func, *event.args, **kw)
-
-class Sum(net.Pipe):
-    
-    @trellis.compute
-    def minimum(self):
-        try:
-            return self.output.minimum
-        except AttributeError:
-            return None
-
-    @trellis.compute
-    def maximum(self):
-        try:
-            return self.output.maximum
-        except AttributeError:
-            return None
-        
-    def send(self, inputs, *args, **kwargs):
-        # sum all inputs
-        total = 0
-        for input in inputs:
-            total += input()
-        super(Sum, self).send(total, *args, **kwargs)
-
-class Assign(net.Demultiplexer):
-
-    @trellis.maintain
-    def minimum(self): # FIXME: optimize
-        outputs = self.outputs
-        if not outputs:
-            return None
-        bounds = [x.minimum for x in outputs if x.connected]
-        bounds = [x for x in bounds if x is not None]
-        demand = sum(bounds)
-        return demand
-    
-    @trellis.maintain
-    def maximum(self): # FIXME: optimize
-        outputs = self.outputs
-        if not outputs:
-            return None
-        bounds = [x.maximum for x in outputs if x.connected]
-        if None in bounds:
-            demand = None
-        else:
-            demand = sum(bounds)
-        return demand
+                yield event
 
     @trellis.modifier
     def send(self, total, assigner=None, outputs=None):
@@ -198,54 +159,58 @@ class Assign(net.Demultiplexer):
         
         # meet the minimums
         for x in outputs:
-            if not x.minimum:
-                count = 0
-            elif x.minimum > total:
+            minimum = x.output.minimum
+            count = 0
+            if minimum:
+                count = minimum
+            if count > total:
                 raise RuntimeError(total)
-            else:
-                count = x.minimum
-                total -= count
+            total -= count
             assigned[x] = count
 
         # some policy to allocate the remainder
         capacities = {}
         for x in assigned:
-            capacity = x.maximum
+            maximum = x.output.maximum
+            capacity = maximum
             if capacity is not None:
                 capacity -= assigned[x]
             capacities[x] = capacity
         for x, count in assigner(total, capacities):
+            assert count <= total
+            total -= count
             assigned[x] += count
+        
+        if total != 0:
+            raise RuntimeError(total)
         
         # finally, send
         for x, count in assigned.iteritems():
-            total -= x.send(count)
-        return total
-    
-#############################################################################
-#############################################################################
-
-class Conserve(net.Transition):
-    r"""Conserves total flow from inputs to outputs."""
-    
-    def __init__(self, *args, **kwargs):
-        if 'mux' not in kwargs:
-            kwargs['mux'] = Threshold()
-        if 'pipe' not in kwargs:
-            kwargs['pipe'] = Sum()
-        if 'demux' not in kwargs:
-            kwargs['demux'] = Assign()
-        super(Conserve, self).__init__(*args, **kwargs)
-
+            x.send(count)
 
 #############################################################################
 #############################################################################
 
 class FlowNetwork(net.Network):
 
-    Arc = Bounded
-    Transition = Conserve
-    Condition = Counter
+    @trellis.modifier
+    def Condition(self, *args, **kwargs):
+        condition = Counter(*args, **kwargs)
+        self.conditions.add(condition)
+        return condition
+    
+    @trellis.modifier
+    def Transition(self, *args, **kwargs):
+        if 'demux' not in kwargs:
+            kwargs['demux'] = Gateway()
+        if 'pipe' not in kwargs:
+            kwargs['pipe'] = Aggregate()
+        transition = net.Transition(*args, **kwargs)
+        self.transitions.add(transition)
+        return transition
+
+#############################################################################
+#############################################################################
     
 Network = FlowNetwork
 

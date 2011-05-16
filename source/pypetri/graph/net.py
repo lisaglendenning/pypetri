@@ -20,8 +20,8 @@ class GraphNetwork(trellis.Component):
 
     Graph = nx.MultiDiGraph
     
-    net = trellis.attr(None)
-    graph = trellis.attr(None)
+    net = trellis.make(None)
+    graph = trellis.make(None)
     
     def __init__(self, net, g=None, *args, **kwargs):
         if g is None:
