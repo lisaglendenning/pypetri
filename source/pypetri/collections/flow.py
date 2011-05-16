@@ -142,11 +142,10 @@ class Gateway(net.Demultiplexer):
 
     def next(self, *args, **kwargs):
         predicate = self.predicate
-        for event in super(Gateway, self).next(*args, **kwargs):
-            flows = event.args[0]
+        for flows in super(Gateway, self).next(*args, **kwargs):
             inflow = sum([flow.args[0] for flow in flows])
             if predicate(inflow):
-                yield event
+                yield flows
 
     @trellis.modifier
     def send(self, total, assigner=None, outputs=None):
