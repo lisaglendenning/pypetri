@@ -170,72 +170,61 @@ class Tee(Demultiplexer):
 class Pipeline(Pipe, collections.Iterable,):
     """Chain of pipe operators."""
     
-    pipes = trellis.make(list) # TODO: linked list would be better
+    head = trellis.attr(None)
+    tail = trellis.attr(None)
     
+    def __init__(self, *args, **kwargs):
+        super(Pipeline, self).__init__(**kwargs)
+        for arg in args:
+            self.append(arg)
+
     @trellis.maintain
-    def _links(self):
-        pipes = self.pipes
-        npipes = len(pipes)
-        for i in xrange(npipes):
-            if i > 0:
-                input = pipes[i-1]
-            else:
-                input = self.input
-            if pipes[i].input is not input:
-                pipes[i].input = input
-            if i < npipes-1:
-                output = pipes[i+1]
-            else:
-                output = self.output
-            if pipes[i].output is not output:
-                pipes[i].output = output
-        return pipes
+    def _pipes(self):
+        head = self.head
+        if head is None:
+            return
+        if head.input is not self.input:
+            head.input = self.input
+        tail = self.tail
+        if tail.output is not self.output:
+            tail.output = self.output
     
-    def __nonzero__(self):
-        return len(self) > 0
-    
-    @trellis.compute
-    def __len__(self):
-        return self.pipes.__len__
-    
-    @trellis.compute
     def __iter__(self):
-        return self.pipes.__iter__
-    
-    @trellis.compute
-    def __getitem__(self):
-        return self.pipes.__getitem__
+        next = self.head
+        while next is not None:
+            yield next
+            next = next.output
+            if next is self.tail:
+                break
         
     @trellis.modifier
     def append(self, item):
-        pipes = self.pipes
-        pipes.append(item)
-        trellis.on_undo(self.pipes.pop)
-        if len(pipes) > 1:
-            input = pipes[-2]
-            prev = input.output
-            input.output = item
-            trellis.on_undo(setattr, input, 'output', prev,)
+        tail = self.tail
+        if tail is None:
+            self.head = item
         else:
-            input = self.input
-        prev = item.input
-        item.input = input
-        trellis.on_undo(setattr, item, 'input', prev,)
-        prev = item.output
-        item.output = self.output
-        trellis.on_undo(setattr, item, 'output', prev,)
+            tail.output = item
+            item.input = tail
+        self.tail = item
     
-    @trellis.compute
-    def __delitem__(self):
-        return self.pipes.__delitem__
-        
-    @trellis.compute
-    def insert(self):
-        return self.pipes.insert
-    
+    @trellis.modifier
+    def pop(self,):
+        tail = self.tail
+        if tail is None:
+            raise ValueError(self)
+        else:
+            if tail is self.head:
+                self.head = None
+                self.tail = None
+            else:
+                self.tail = tail.input
+        tail.input = None
+        tail.output = None
+        return tail
+            
     @trellis.compute
     def send(self):
-        output = self[0] if len(self) else self.output
+        output = self.head if self.head is not None else self.output
         if output is not None:
             return output.send
         else:
@@ -243,7 +232,7 @@ class Pipeline(Pipe, collections.Iterable,):
         
     @trellis.compute
     def next(self):
-        input = self[-1] if len(self) else self.input
+        input = self.tail if self.tail is not None else self.input
         if input is not None:
             return input.next
         else:
