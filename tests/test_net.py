@@ -22,12 +22,12 @@ class TestCaseNet(unittest.TestCase):
             if i > 0:
                 pair = transitions[i-1], conditions[i]
                 arc = network.Arc()
-                arc.link(*pair)
+                net.link(arc, *pair)
                 arcs.append(arc)
             if i < N-1:
                 pair = conditions[i], transitions[i]
                 arc = network.Arc()
-                arc.link(*pair)
+                net.link(arc, *pair)
                 arcs.append(arc)
         return network, conditions, transitions, arcs
     

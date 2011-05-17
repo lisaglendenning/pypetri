@@ -83,7 +83,7 @@ class FilterOut(Pipe):
         filter = self.fn
         for output in filter(input):
             super(FilterOut, self).send(output, *args, **kwargs)
-        
+
 #############################################################################
 #############################################################################
     

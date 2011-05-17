@@ -5,6 +5,7 @@ import types
 import functools
 
 from pypetri import trellis
+from pypetri import net
 from pypetri.collections import flow
 
 #############################################################################
@@ -55,12 +56,10 @@ class Light(flow.Network):
         # arcs create a circular network
         for i in xrange(len(conditions)):
             j = i+1 if i < len(conditions)-1 else 0
-            pair = conditions[i], transitions[i]
-            arc = self.Arc()
-            arc.link(*pair)
-            pair = transitions[i], conditions[j]
-            arc = self.Arc()
-            arc.link(*pair)
+            for pair in ((conditions[i], transitions[i],),
+                         (transitions[i], conditions[j],),):
+                arc = self.Arc()
+                net.link(arc, *pair)
 
 
 #############################################################################
@@ -75,7 +74,6 @@ class Intersection(flow.Network):
     # Global start state
     CONDITIONS = ['START',]
 
-    start = trellis.make(None)
     lights = trellis.make(trellis.Set)
 
     def __init__(self, ways=2, *args, **kwargs):
@@ -90,16 +88,28 @@ class Intersection(flow.Network):
         if attr not in kwargs:
             kwargs[attr] = trellis.Set([Light() for i in xrange(ways)])
         super(Intersection, self).__init__(*args, **kwargs)
+
+    
+    @trellis.maintain(make=None)
+    def start(self):
+        start = self.start
         for light in self.lights:
             input = getattr(light, light.TRANSITIONS[-1].lower())
+            for i in start.inputs:
+                if i.input is input:
+                    break
+            else:
+                arc = self.Arc()
+                net.link(arc, input, start)
             output = getattr(light, light.TRANSITIONS[0].lower())
-            pair = input, self.start
-            arc = self.Arc()
-            arc.link(*pair)
-            pair = self.start, output
-            arc = self.Arc()
-            arc.link(*pair)
-        
+            for o in start.outputs:
+                if o.output is output:
+                    break
+            else:
+                arc = self.Arc()
+                net.link(arc, start, output)
+        return start
+
 #############################################################################
 #############################################################################
 

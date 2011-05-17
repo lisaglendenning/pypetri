@@ -46,6 +46,10 @@ class Pipe(Component):
     next = trellis.compute(pass_in)
     send = trellis.compute(pass_out)
 
+    @trellis.compute
+    def connected(self):
+        return None not in (self.input, self.output,)
+
     
 class Multiplexer(Component):
 

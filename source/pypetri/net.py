@@ -22,22 +22,14 @@ class Event(functools.partial):
 #############################################################################
 #############################################################################
 
-class Arc(Pipe):
-    """Directional link between vertices."""
-
-    @trellis.compute
-    def ports(self):
-        return (self.input, self.output,)
-        
-    @trellis.compute
-    def connected(self):
-        return None not in self.ports
-    
-    @trellis.modifier
-    def link(self, source, sink):
-        source.outputs.add(self)
-        sink.inputs.add(self)
-
+Arc = Pipe
+   
+@trellis.modifier
+def link(arc, source, sink):
+    arc.input = source
+    arc.output = sink
+    source.outputs.add(arc)
+    sink.inputs.add(arc)
     
 #############################################################################
 #############################################################################
@@ -47,28 +39,24 @@ class Vertex(Switch):
     
     Event = Event
 
-    # TODO: is this buggy?
-    @trellis.maintain(make=trellis.Set) # FIXME: DRY
+    @trellis.maintain(make=trellis.Set)
     def inputs(self):
+        # Relying on added/removed seems buggy
+        # So do it the slow way
         inputs = self.inputs
-        for input in inputs.added:
+        for input in inputs:
             if input.output is not self:
                 input.output = self
-        for input in inputs.removed:
-            if input.output is self:
-                input.output = None
         return inputs
     
-    # TODO: is this buggy?
-    @trellis.maintain(make=trellis.Set) # FIXME: DRY
+    @trellis.maintain(make=trellis.Set)
     def outputs(self):
+        # Relying on added/removed seems buggy
+        # So do it the slow way
         outputs = self.outputs
-        for output in outputs.added:
+        for output in outputs:
             if output.input is not self:
                 output.input = self
-        for output in outputs.removed:
-            if output.input is self:
-                output.input = None
         return outputs
 
 #############################################################################
