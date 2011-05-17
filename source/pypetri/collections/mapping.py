@@ -29,11 +29,9 @@ class Mapping(collection.Collection, collections.MutableMapping,):
     def __setitem__(self,):
         return self.marking.__setitem__
         
-    @trellis.modifier
-    def send(self, *args, **kwargs):
-        marking = self.marking
-        for itr in args, kwargs,:
-            marking.update(itr)
+    @trellis.compute
+    def send(self,):
+        return self.update
 
     @trellis.modifier
     def pull(self, item=None, items=None, pop=None):

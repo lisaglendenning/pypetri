@@ -36,13 +36,13 @@ def brute(itr):
 #############################################################################
 #############################################################################
 
-class Exec(Pipe):
-    """Pipe operator that executes an input function."""
+class Call(Pipe):
+    """Pipe operator that calls an input zero-argument function."""
     
     @trellis.modifier
     def send(self, thunk, *args, **kwargs):
         output = thunk()
-        super(Exec, self).send(output, *args, **kwargs)
+        super(Call, self).send(output, *args, **kwargs)
         
 class Iter(Pipe):
     """Pipe operator that iterates over input."""
@@ -62,15 +62,27 @@ class Apply(Pipe):
         output = self.fn(input)
         super(Apply, self).send(output, *args, **kwargs)
         
-class Filter(Pipe):
+class FilterIn(Pipe):
     """Pipe operator that applies a filter to input."""
+    
+    fn = trellis.attr(None)
+    
+    def next(self, *args, **kwargs):
+        filter = self.fn
+        for event in super(FilterIn, self).next(*args, **kwargs):
+            for filtered in filter(event):
+                yield filtered
+        
+class FilterOut(Pipe):
+    """Pipe operator that applies a filter to output."""
     
     fn = trellis.attr(None)
     
     @trellis.modifier
     def send(self, input, *args, **kwargs):
-        if self.fn(input):
-            super(Filter, self).send(input, *args, **kwargs)
+        filter = self.fn
+        for output in filter(input):
+            super(FilterOut, self).send(output, *args, **kwargs)
         
 #############################################################################
 #############################################################################
