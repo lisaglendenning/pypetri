@@ -7,6 +7,7 @@ from __future__ import absolute_import
 
 import functools
 import collections
+import inspect
 
 from . import trellis
 
@@ -17,7 +18,12 @@ from .collections import operators
 #############################################################################
 
 class Event(functools.partial):
-    pass
+    
+    def __new__(cls, *args, **kwargs):
+        obj = super(Event, cls).__new__(cls, *args, **kwargs)
+        if inspect.ismethod(obj.func):
+            obj.self = obj.func.im_self
+        return obj
 
 #############################################################################
 #############################################################################
