@@ -140,7 +140,7 @@ class Transition(Vertex):
         for event in self.next():
             break
         else: # no events
-            raise RuntimeError(self)
+            raise StopIteration
         return event(*args, **kwargs)
 
 #############################################################################
@@ -188,7 +188,7 @@ class Network(trellis.Component):
         for event in self.next():
             break
         else:
-            raise RuntimeError(self)
+            raise StopIteration
         return event(*args, **kwargs)
 
 #############################################################################

@@ -29,17 +29,20 @@ class Mapping(collection.Collection, collections.MutableMapping,):
     def __setitem__(self,):
         return self.marking.__setitem__
         
-    @trellis.compute
-    def send(self,):
-        return self.update
-
+    @trellis.modifier
+    def send(self, item=None, items=None, add=None):
+        if add is None:
+            add = self.__setitem__
+        if item is not None:
+            return add(*item)
+        return self.update(items)
+        
     @trellis.modifier
     def pull(self, item=None, items=None, pop=None):
         if pop is None:
             pop = self.pop
         if item is not None:
-            pop(item)
-            return item
+            return pop(item)
         marking = self.marking
         if items is marking:
             items = marking.copy()

@@ -26,9 +26,12 @@ class Pool(collection.Collection, collections.MutableSet,):
         return self.marking.discard
 
     @trellis.modifier
-    def send(self, *args):
-        marking = self.marking
-        marking.update(args)
+    def send(self, item=None, items=None, add=None):
+        if add is None:
+            add = self.add
+        if item is not None:
+            return add(item)
+        return self.update(items)
 
     @trellis.modifier
     def pull(self, item=None, items=None, pop=None):
