@@ -38,23 +38,17 @@ class Mapping(collection.Collection, collections.MutableMapping,):
         return self.update(items)
         
     @trellis.modifier
-    def pull(self, item=None, items=None, pop=None):
-        if pop is None:
-            pop = self.pop
-        if item is not None:
-            return pop(item)
+    def pull(self, items=None):
         marking = self.marking
-        if items is marking:
-            items = marking.copy()
-            marking.clear()
-        else:
-            try:
-                itr = iter(items)
-            except AttributeError:
-                raise TypeError(items)
-            for item in itr:
-                pop(item)
-        return items
+        if items is None or items is marking:
+            return super(Mapping, self).pull()
+        pop = self.pop
+        try:
+            itr = iter(items)
+        except AttributeError:
+            raise TypeError(items)
+        result = [pop(i) for i in itr]
+        return result
     
     @trellis.modifier
     def pop(self, item,):

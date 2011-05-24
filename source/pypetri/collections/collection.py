@@ -31,10 +31,22 @@ class Collection(net.Condition,):
     @trellis.compute
     def __contains__(self):
         return self.marking.__contains__
+    
+    @trellis.modifier
+    def pull(self):
+        marking = self.marking.copy()
+        self.marking.clear()
+        return marking
 
-    def next(self):
-        if self.marking:
-            yield self.Event(self.pull, items=self.marking)
+    def next(self, select=None):
+        marking = self.marking
+        if not marking:
+            return
+        if select is None:
+            yield self.Event(self.pull,)
+        else:
+            for selection in select(marking):
+                yield self.Event(self.pull, selection)
             
 #############################################################################
 #############################################################################

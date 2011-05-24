@@ -125,7 +125,7 @@ class Transition(Vertex):
     def next(self, *args, **kwargs):
         Event = self.Event
         output = self.send
-        for event in self.demux.next():
+        for event in self.demux.next(*args, **kwargs):
             yield Event(output, event)
 
     @trellis.compute                

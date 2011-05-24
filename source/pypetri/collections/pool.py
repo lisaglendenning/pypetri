@@ -34,23 +34,17 @@ class Pool(collection.Collection, collections.MutableSet,):
         return self.update(items)
 
     @trellis.modifier
-    def pull(self, item=None, items=None, pop=None):
-        if pop is None:
-            pop = self.remove
-        if item is not None:
-            pop(item)
-            return item
+    def pull(self, items=None):
         marking = self.marking
-        if items is marking:
-            items = marking.copy()
-            marking.clear()
-        else:
-            try:
-                itr = iter(items)
-            except AttributeError:
-                raise TypeError(items)
-            for item in itr:
-                pop(item)
+        if items is None or items is marking:
+            return super(Pool, self).pull()
+        try:
+            itr = iter(items)
+        except AttributeError:
+            raise TypeError(items)
+        pop = self.remove
+        for i in itr:
+            pop(i)
         return items
 
 #############################################################################
