@@ -32,10 +32,18 @@ class Collection(net.Condition,):
     def __contains__(self):
         return self.marking.__contains__
     
+    @trellis.compute
+    def clear(self):
+        return self.marking.clear
+    
+    @trellis.compute
+    def send(self):
+        return self.update
+    
     @trellis.modifier
     def pull(self):
-        marking = self.marking.copy()
-        self.marking.clear()
+        marking = self.copy()
+        self.clear()
         return marking
 
     def next(self, select=None):

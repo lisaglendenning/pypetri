@@ -6,7 +6,6 @@ from __future__ import absolute_import
 import collections
 
 from .. import trellis
-from .. import net
 
 from . import collection
 
@@ -24,28 +23,30 @@ class Pool(collection.Collection, collections.MutableSet,):
     @trellis.compute
     def discard(self):
         return self.marking.discard
+    
+    def copy(self):
+        return set(self.marking)
 
     @trellis.modifier
-    def send(self, item=None, items=None, add=None):
-        if add is None:
-            add = self.add
-        if item is not None:
-            return add(item)
-        return self.update(items)
+    def update(self, arg):
+        # won't work if contained items are iterables
+        if isinstance(arg, collections.Iterable):
+            return super(Pool, self).update(arg)
+        else:
+            return self.add(arg)
 
     @trellis.modifier
-    def pull(self, items=None):
+    def pull(self, arg=None):
         marking = self.marking
-        if items is None or items is marking:
+        if arg is None or arg is marking:
             return super(Pool, self).pull()
-        try:
-            itr = iter(items)
-        except AttributeError:
-            raise TypeError(items)
         pop = self.remove
-        for i in itr:
+        if isinstance(arg, collections.Hashable) and arg in marking:
+            pop(arg)
+            return arg
+        for i in arg:
             pop(i)
-        return items
+        return arg
 
 #############################################################################
 #############################################################################

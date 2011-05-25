@@ -137,11 +137,11 @@ class Transition(Vertex):
     
     # shortcut for executing the first default event
     def __call__(self, *args, **kwargs):
-        for event in self.next():
+        for event in self.next(*args, **kwargs):
             break
         else: # no events
             raise StopIteration
-        return event(*args, **kwargs)
+        return event()
 
 #############################################################################
 #############################################################################
@@ -185,11 +185,11 @@ class Network(trellis.Component):
     
     @trellis.modifier
     def __call__(self, *args, **kwargs):
-        for event in self.next():
+        for event in self.next(*args, **kwargs):
             break
         else:
             raise StopIteration
-        return event(*args, **kwargs)
+        return event()
 
 #############################################################################
 #############################################################################
