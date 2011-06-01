@@ -47,13 +47,12 @@ class Collection(net.Condition,):
         return marking
 
     def next(self, select=None):
-        marking = self.marking
-        if not marking:
+        if not len(self):
             return
         if select is None:
             yield self.Event(self.pull,)
         else:
-            for selection in select(marking):
+            for selection in select(self):
                 yield self.Event(self.pull, selection)
             
 #############################################################################

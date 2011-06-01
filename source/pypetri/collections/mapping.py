@@ -35,10 +35,8 @@ class Mapping(collection.Collection, collections.MutableMapping,):
     def update(self, arg):
         add = self.__setitem__
         if isinstance(arg, tuple) and len(arg) == 2:
-            for i in arg:
-                if not isinstance(i, tuple):
-                    add(*arg)
-                    return
+            add(*arg)
+            return
         if isinstance(arg, collections.Mapping):
             arg = arg.iteritems()
         for item in arg:
@@ -46,21 +44,17 @@ class Mapping(collection.Collection, collections.MutableMapping,):
                 
     @trellis.modifier
     def pull(self, arg=None):
-        marking = self.marking
-        if arg is None or arg is marking:
+        if arg is None or arg is self.marking:
             return super(Mapping, self).pull()
         pop = self.pop
         if isinstance(arg, tuple) and len(arg) == 2:
-            k,v = arg
-            try:
+            k = arg[0]
+            if k in self:
                 v = pop(k)
-            except KeyError:
-                pass
-            else:
                 return k, v
         if isinstance(arg, collections.Hashable):
             k = arg
-            if k in marking:
+            if k in self:
                 v = pop(k)
                 return k, v
         for k in arg:

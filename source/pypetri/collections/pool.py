@@ -28,12 +28,14 @@ class Pool(collection.Collection, collections.MutableSet,):
         return set(self.marking)
 
     @trellis.modifier
-    def update(self, arg):
-        # won't work if contained items are iterables
-        if isinstance(arg, collections.Iterable):
-            return super(Pool, self).update(arg)
-        else:
-            return self.add(arg)
+    def update(self, *args):
+        add = self.add
+        # won't work for all contained types
+        if len(args) == 1:
+            if not isinstance(args[0], collections.Hashable):
+                args = args[0]
+        for arg in args:
+            add(arg)
 
     @trellis.modifier
     def pull(self, arg=None):
