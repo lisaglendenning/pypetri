@@ -5,10 +5,37 @@
 from __future__ import absolute_import
 
 import collections
+import itertools
 
 from . import trellis
-from ..circuit import *
 
+from .circuit import *
+
+#############################################################################
+#############################################################################
+
+def flatten(arg, filter=None, types=(list, tuple,)):
+    if filter is None:
+        filter = lambda x: not isinstance(x, types)
+    if filter(arg):
+        yield arg
+        return
+    iterable = iter(arg)
+    while True:
+        try:
+            i = iterable.next()
+        except StopIteration:
+            return
+        if filter(i):
+            yield i
+        elif isinstance(i, types):
+            try:
+                i = iter(i)
+            except TypeError:
+                pass
+            else:
+                iterable = itertools.chain(i, iterable)
+                
 #############################################################################
 #############################################################################
 
@@ -58,9 +85,19 @@ class Apply(Pipe):
     fn = trellis.attr(None)
     
     @trellis.modifier
-    def send(self, input, *args, **kwargs):
-        output = self.fn(input)
-        super(Apply, self).send(output, *args, **kwargs)
+    def send(self, *args, **kwargs):
+        output = self.fn(*args, **kwargs)
+        super(Apply, self).send(output)
+        
+class Flatten(Pipe):
+    """Pipe operator that flattens input."""
+
+    @trellis.modifier
+    def send(self, input):
+        if isinstance(input, collections.Mapping):
+            super(Flatten, self).send(**input)
+        else:
+            super(Flatten, self).send(*input)
         
 class FilterIn(Pipe):
     """Pipe operator that applies a filter to input."""

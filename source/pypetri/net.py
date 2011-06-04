@@ -12,7 +12,7 @@ import inspect
 from . import trellis
 
 from .circuit import *
-from .collections import operators
+from . import operators
 
 #############################################################################
 #############################################################################
@@ -113,7 +113,7 @@ class Transition(Vertex):
             demux.outputs = self.outputs
         return demux
     
-    @trellis.maintain(make=operators.Pipeline)
+    @trellis.maintain(make=Pipe)
     def pipe(self):
         pipe = self.pipe
         if pipe.input is not self.mux:
