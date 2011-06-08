@@ -7,14 +7,14 @@ import collections
 
 from .. import trellis
 
-from . import collection
+from . import collection, sets
 
 #############################################################################
 #############################################################################
 
 class Pool(collection.Collection, collections.MutableSet,):
     
-    marking = trellis.make(trellis.Set)
+    marking = trellis.make(sets.Set)
     
     @trellis.compute
     def add(self):

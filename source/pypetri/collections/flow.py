@@ -3,13 +3,13 @@
 
 from __future__ import absolute_import
 
+import itertools
+
 from . import trellis
-from .. import net
+from .. import net, operators
 
 #############################################################################
 #############################################################################
-
-Flow = int
 
 def bounded(count, minimum=None, maximum=None):
         return (count is not None) and (minimum is None or count >= minimum)\
@@ -42,30 +42,26 @@ def roundrobin(total, capacities):
 #############################################################################
 #############################################################################
 
-class Counter(net.Condition):
+class Condition(net.Condition):
 
-    minimum = trellis.make()
-    maximum = trellis.make()
-    
-    def __init__(self, *args, **kwargs):
-        for k, v in (('marking', 0), ('minimum', None), ('maximum', None),):
-            kwargs.setdefault(k, v)
-        super(Counter, self).__init__(*args, **kwargs)
+    marking = trellis.attr(initially=0)
+    minimum = trellis.make(lambda self: None)
+    maximum = trellis.make(lambda self: None)
     
     @trellis.maintain
     def bounded(self):
-        count = self.marking
+        # Enforce bounds
+        marking = self.marking
         minimum = self.minimum
         maximum = self.maximum
-        if not bounded(count, minimum=minimum, maximum=maximum):
-            raise ValueError(count)
-        return True
+        if not bounded(marking, minimum=minimum, maximum=maximum):
+            raise ValueError(marking)
+        return marking
 
     @trellis.modifier
     def send(self, count):
         total = self.marking + count
         self.marking = total
-        return count
     
     @trellis.modifier
     def pull(self, count):
@@ -76,137 +72,122 @@ class Counter(net.Condition):
     def next(self, counter=None, *args, **kwargs):
         if counter is None:
             counter = self.Event(decreasing, minimum=self.minimum, maximum=self.maximum)
+        Event = self.Event
+        pull = self.pull
         for count in counter(self.marking, *args, **kwargs):
-            event = self.Event(self.pull, count)
+            event = Event(pull, count)
             yield event
 
 #############################################################################
 #############################################################################
 
-class Aggregate(net.Pipe):
-
-    def send(self, inputs, *args, **kwargs):
-        # sum all inputs
-        total = 0
-        for input in inputs:
-            total += input()
-        super(Aggregate, self).send(total, *args, **kwargs)
-
-#############################################################################
-#############################################################################
-
-class Gateway(net.Demultiplexer):
-
-    predicate = trellis.attr(None)
+class Transition(net.Transition):
     
-    def __init__(self, predicate=None, *args, **kwargs):
-        if predicate is None:
-            predicate = lambda flow: bounded(flow, minimum=self.minimum, maximum=self.maximum)
-        super(Gateway, self).__init__(*args, predicate=predicate, **kwargs)
-        
-    @trellis.maintain
-    def minimum(self): # TODO: optimize?
-        outputs = self.outputs
-        if outputs is None:
-            return None
-        demand = 0
-        for output in outputs:
-            if not output.connected:
-                continue
-            output = output.output
-            minimum = output.minimum
-            if minimum:
-                if output.marking:
-                    minimum -= output.marking
-                demand += minimum
-        return demand
+    @classmethod
+    def aggregate(cls, inputs):
+        yield sum([i() for i in inputs])
     
-    @trellis.maintain
-    def maximum(self): # TODO: optimize?
-        outputs = self.outputs
-        if outputs is None:
-            return None
-        demand = 0
-        for output in outputs:
-            if not output.connected:
-                continue
-            output = output.output
-            maximum = output.maximum
-            if maximum is None:
+    @classmethod
+    def Pipe(cls):
+        return operators.FilterOut(fn=cls.aggregate)
+
+    class Demultiplexer(operators.Demultiplexer):
+    
+        predicate = trellis.attr(bounded)
+
+        @trellis.compute
+        def minimum(self): # TODO: optimize?
+            outputs = self.outputs
+            if not outputs:
                 return None
-            if maximum:
-                if output.marking:
-                    maximum -= output.marking
-                demand += maximum
-        return demand
-
-    def next(self, *args, **kwargs):
-        predicate = self.predicate
-        for flows in super(Gateway, self).next(*args, **kwargs):
-            inflow = sum([flow.args[0] for flow in flows])
-            if predicate(inflow):
-                yield flows
-
-    @trellis.modifier
-    def send(self, total, assigner=None, outputs=None):
-        if outputs is None:
-            outputs = [x for x in self.outputs if x.connected]
-        if assigner is None:
-            assigner = roundrobin
+            demand = 0
+            for output in outputs:
+                output = output.output
+                if output is None:
+                    continue
+                minimum = output.minimum
+                if minimum:
+                    if output.marking:
+                        minimum -= output.marking
+                    demand += minimum
+            return demand
         
-        assigned = {}
-        
-        # meet the minimums
-        for x in outputs:
-            minimum = x.output.minimum
-            count = 0
-            if minimum:
-                count = minimum
-            if count > total:
-                raise RuntimeError(total)
-            total -= count
-            assigned[x] = count
-
-        # some policy to allocate the remainder
-        capacities = {}
-        for x in assigned:
-            maximum = x.output.maximum
-            capacity = maximum
-            if capacity is not None:
-                capacity -= assigned[x]
-            capacities[x] = capacity
-        for x, count in assigner(total, capacities):
-            assert count <= total
-            total -= count
-            assigned[x] += count
-        
-        if total != 0:
-            raise RuntimeError(total)
-        
-        # finally, send
-        for x, count in assigned.iteritems():
-            x.send(count)
+        @trellis.compute
+        def maximum(self): # TODO: optimize?
+            outputs = self.outputs
+            if not outputs:
+                return None
+            demand = 0
+            for output in outputs:
+                output = output.output
+                if output is None:
+                    continue
+                maximum = output.maximum
+                if maximum is None:
+                    return None
+                if maximum:
+                    if output.marking:
+                        maximum -= output.marking
+                    demand += maximum
+            return demand
+    
+        def next(self, *args, **kwargs):
+            predicate = self.predicate
+            minimum = self.minimum
+            maximum = self.maximum
+            for flows in super(Transition.Demultiplexer, self).next(*args, **kwargs):
+                inflow = sum([flow.args[0] for flow in flows])
+                if predicate(inflow, minimum, maximum):
+                    yield flows
+    
+        @trellis.modifier
+        def send(self, total, assigner=roundrobin, outputs=iter):
+            outputs = [x for x in outputs(self.outputs) if x.output is not None]
+            
+            assigned = {}
+            
+            # meet the minimums
+            for x in outputs:
+                minimum = x.output.minimum
+                count = 0
+                if minimum:
+                    count = minimum
+                if count > total:
+                    raise ValueError(total)
+                total -= count
+                assigned[x] = count
+    
+            # some policy to allocate the remainder
+            capacities = {}
+            for x in assigned:
+                maximum = x.output.maximum
+                capacity = maximum
+                if capacity is not None:
+                    capacity -= assigned[x]
+                capacities[x] = capacity
+            for x, count in assigner(total, capacities):
+                assert count <= total
+                total -= count
+                assigned[x] += count
+            
+            if total != 0:
+                raise ValueError(total)
+            
+            # finally, send
+            for x, count in assigned.iteritems():
+                x.send(count)
 
 #############################################################################
 #############################################################################
 
 class FlowNetwork(net.Network):
 
-    @trellis.modifier
-    def Condition(self, *args, **kwargs):
-        condition = Counter(*args, **kwargs)
-        self.conditions.add(condition)
-        return condition
+    def Condition(self, Condition=Condition, *args, **kwargs):
+        return super(FlowNetwork, self).Condition(Condition, *args, **kwargs)
     
     @trellis.modifier
-    def Transition(self, *args, **kwargs):
-        if 'demux' not in kwargs:
-            kwargs['demux'] = Gateway()
-        if 'pipe' not in kwargs:
-            kwargs['pipe'] = Aggregate()
-        transition = net.Transition(*args, **kwargs)
-        self.transitions.add(transition)
-        return transition
+    def Transition(self, Transition=Transition, *args, **kwargs):
+        return super(FlowNetwork, self).Transition(Transition, *args, **kwargs)
 
 #############################################################################
 #############################################################################

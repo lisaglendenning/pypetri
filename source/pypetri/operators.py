@@ -9,7 +9,7 @@ import itertools
 
 from . import trellis
 
-from .circuit import *
+from . import circuit
 
 #############################################################################
 #############################################################################
@@ -63,6 +63,20 @@ def brute(itr):
 #############################################################################
 #############################################################################
 
+class Pipe(trellis.Component, circuit.Pipe):
+    
+    input = trellis.attr(None)
+    output = trellis.attr(None)
+    
+    @trellis.compute
+    def send(self):
+        return self.pass_out(self.output)
+
+    @trellis.compute
+    def next(self):
+        return self.pass_in(self.input)
+    
+    
 class Call(Pipe):
     """Pipe operator that calls an input zero-argument function."""
     
@@ -121,43 +135,6 @@ class FilterOut(Pipe):
         for output in filter(input):
             super(FilterOut, self).send(output, *args, **kwargs)
 
-#############################################################################
-#############################################################################
-    
-class Combinator(Multiplexer):
-    """Iterates over all combinations of inputs."""
-
-    def next(self, search=None, inputs=None, *args, **kwargs):
-        # A brute-force, general approach is to yield all combinations
-        # (n choose k for k in 1..n) of enabling events from all inputs.
-        # We don't care about ordering (why we don't do permutations),
-        # and there is no repetition.
-        search = brute if search is None else search
-        inputs = self.inputs if inputs is None else inputs
-    
-        def space():
-            for i in inputs:
-                yield i.next(*args, **kwargs)
-            
-        for events in search(space()):
-            # ignore empty events
-            if len(events) == 0:
-                continue
-            yield events
-            
-#############################################################################
-#############################################################################
-
-class Tee(Demultiplexer):
-    """Copies an input to all outputs."""
-    
-    @trellis.modifier
-    def send(self, input, outputs=None, *args, **kwargs):
-        if outputs is None:
-            outputs = self.outputs
-        for output in outputs:
-            output.send(input, *args, **kwargs)
-        
 #############################################################################
 #############################################################################
 
@@ -219,18 +196,63 @@ class Pipeline(Pipe, collections.Iterable,):
     @trellis.compute
     def send(self):
         output = self.head if self.head is not None else self.output
-        if output is not None:
-            return output.send
-        else:
-            return nada
+        return self.pass_out(output)
         
     @trellis.compute
     def next(self):
         input = self.tail if self.tail is not None else self.input
-        if input is not None:
-            return input.next
-        else:
-            return nada
+        return self.pass_in(input)
 
+#############################################################################
+#############################################################################
+
+class Multiplexer(trellis.Component, circuit.Multiplexer):
+
+    inputs = trellis.attr(None)
+    output = trellis.attr(None)
+    
+    @trellis.compute
+    def send(self):
+        return self.pass_out(self.output)
+
+
+class Combinator(Multiplexer):
+    """Iterates over all combinations of inputs."""
+
+    def next(self, search=brute, inputs=iter, *args, **kwargs):
+        # A brute-force, general approach is to yield all combinations
+        # (n choose k for k in 1..n) of enabling events from all inputs.
+        # We don't care about ordering (why we don't do permutations),
+        # and there is no repetition.
+        inputs = inputs(self.inputs)
+        inputs_itr = itertools.imap(lambda x: x.next(*args, **kwargs), inputs)            
+        for events in search(inputs_itr):
+            # ignore empty events
+            if len(events) == 0:
+                continue
+            yield events
+            
+#############################################################################
+#############################################################################
+
+class Demultiplexer(trellis.Component, circuit.Demultiplexer):
+
+    input = trellis.attr(None)
+    outputs = trellis.attr(None)
+    
+    @trellis.compute
+    def next(self):
+        return self.pass_in(self.input)
+
+
+class Tee(Demultiplexer):
+    """Copies an input to all outputs."""
+
+    @trellis.modifier
+    def send(self, input, outputs=iter, *args, **kwargs):
+        outputs = outputs(self.outputs)
+        for output in outputs:
+            output.send(input, *args, **kwargs)
+        
 #############################################################################
 #############################################################################

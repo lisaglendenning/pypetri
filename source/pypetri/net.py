@@ -6,13 +6,13 @@ r"""Petri Net base."""
 from __future__ import absolute_import
 
 import functools
-import collections
 import inspect
 
 from . import trellis
 
-from .circuit import *
+from . import circuit
 from . import operators
+from .collections import sets
 
 #############################################################################
 #############################################################################
@@ -28,7 +28,7 @@ class Event(functools.partial):
 #############################################################################
 #############################################################################
 
-Arc = Pipe
+Arc = operators.Pipe
    
 @trellis.modifier
 def link(arc, source, sink):
@@ -40,25 +40,23 @@ def link(arc, source, sink):
 #############################################################################
 #############################################################################
 
-class Vertex(Switch):
+class Vertex(trellis.Component, circuit.Switch):
     """Has a set of input Arcs and a set of output Arcs."""
     
     Event = Event
 
-    @trellis.maintain(make=trellis.Set)
+    @trellis.maintain(make=sets.Set)
     def inputs(self):
-        # Relying on added/removed seems buggy
-        # So do it the slow way
+        # O(n)
         inputs = self.inputs
         for input in inputs:
             if input.output is not self:
                 input.output = self
         return inputs
     
-    @trellis.maintain(make=trellis.Set)
+    @trellis.maintain(make=sets.Set)
     def outputs(self):
-        # Relying on added/removed seems buggy
-        # So do it the slow way
+        # O(n)
         outputs = self.outputs
         for output in outputs:
             if output.input is not self:
@@ -73,13 +71,8 @@ class Condition(Vertex):
 
     marking = trellis.attr(None)
 
-    def send(self, marking=None, *args, **kwargs):
-        if marking is not None:
-            if isinstance(marking, collections.Iterable):
-                for marking in marking:
-                    return self.send(marking, *args, **kwargs)
-            elif isinstance(marking, collections.Callable):
-                marking = marking(*args, **kwargs)
+    @trellis.modifier
+    def send(self, marking=None):
         marking, self.marking = self.marking, marking
         return marking
 
@@ -95,7 +88,11 @@ class Transition(Vertex):
     
     Event = Event
     
-    @trellis.maintain(make=operators.Combinator)
+    Multiplexer = operators.Combinator
+    Demultiplexer = operators.Tee
+    Pipe = operators.Pipe
+    
+    @trellis.maintain(make=lambda self: self.Multiplexer())
     def mux(self):
         mux = self.mux
         if mux.inputs is not self.inputs:
@@ -104,7 +101,7 @@ class Transition(Vertex):
             mux.output = self.pipe
         return mux
     
-    @trellis.maintain(make=operators.Tee)
+    @trellis.maintain(make=lambda self: self.Demultiplexer())
     def demux(self):
         demux = self.demux
         if demux.input is not self.pipe:
@@ -113,7 +110,7 @@ class Transition(Vertex):
             demux.outputs = self.outputs
         return demux
     
-    @trellis.maintain(make=Pipe)
+    @trellis.maintain(make=lambda self: self.Pipe())
     def pipe(self):
         pipe = self.pipe
         if pipe.input is not self.mux:
@@ -122,18 +119,19 @@ class Transition(Vertex):
             pipe.output = self.demux
         return pipe
     
-    def next(self, *args, **kwargs):
+    @trellis.compute
+    def next(self):
+        fn = self.pass_in(self.demux)
         Event = self.Event
-        output = self.send
-        for event in self.demux.next(*args, **kwargs):
-            yield Event(output, event)
+        send = self.send
+        def next(*args, **kwargs):
+            for input in fn(*args, **kwargs):
+                yield Event(send, input)
+        return next
 
     @trellis.compute                
-    def send(self,):
-        try:
-            return self.mux.send
-        except AttributeError:
-            return nada
+    def send(self):
+        return self.pass_out(self.mux)
     
     # shortcut for executing the first default event
     def __call__(self, *args, **kwargs):
@@ -149,39 +147,38 @@ class Transition(Vertex):
 class Network(trellis.Component):
 
     @trellis.modifier
-    def Arc(self, *args, **kwargs):
-        arc = Arc(*args, **kwargs)
+    def Arc(self, source, sink, arc=None):
+        if arc is None:
+            arc = Arc(input=source, output=sink)
         self.arcs.add(arc)
+        link(arc, source, sink)
         return arc
 
     @trellis.modifier
-    def Condition(self, *args, **kwargs):
+    def Condition(self, Condition=Condition, *args, **kwargs):
         condition = Condition(*args, **kwargs)
         self.conditions.add(condition)
         return condition
     
     @trellis.modifier
-    def Transition(self, *args, **kwargs):
+    def Transition(self, Transition=Transition, *args, **kwargs):
         transition = Transition(*args, **kwargs)
         self.transitions.add(transition)
         return transition
     
-    arcs = trellis.make(trellis.Set)
-    transitions = trellis.make(trellis.Set)
-    conditions = trellis.make(trellis.Set)
-    
-    def __init__(self, *args, **kwargs):
-        for k in 'arcs', 'vertices':
-            if k in kwargs:
-                kwargs[k] = trellis.Set(kwargs[k])
-        super(Network, self).__init__(*args, **kwargs)
+    arcs = trellis.make(sets.Set)
+    transitions = trellis.make(sets.Set)
+    conditions = trellis.make(sets.Set)
 
-    def next(self, transitions=None, *args, **kwargs):
-        if transitions is None:
-            transitions = self.transitions
-        for t in transitions:
-            for event in t.next(*args, **kwargs):
-                yield event
+    @trellis.compute
+    def next(self,):
+        ts = self.transitions
+        def next(transitions=iter, *args, **kwargs):
+            transitions = transitions(ts)
+            for t in transitions:
+                for event in t.next(*args, **kwargs):
+                    yield event
+        return next
     
     @trellis.modifier
     def __call__(self, *args, **kwargs):

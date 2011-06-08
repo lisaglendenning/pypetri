@@ -12,10 +12,30 @@ from pypetri.collections import flow
 #############################################################################
 
 #
+# Flow must equal maximum
+#
+
+class ExactFlow(flow.Network):
+    
+    @classmethod
+    def ismax(cls, flow, min, max):
+        return flow == max
+
+    def Condition(self, *args, **kwargs):
+        if 'minimum' not in kwargs:
+            minimum = 0
+        return super(ExactFlow, self).Condition(*args, **kwargs)
+    
+    def Transition(self, *args, **kwargs):
+        if 'demux' not in kwargs:
+            kwargs['demux'] = flow.Transition.Demultiplexer(predicate=self.ismax)
+        return super(ExactFlow, self).Transition(*args, **kwargs)
+
+#
 # Net for a single light
 #
 
-class Light(flow.Network):
+class Light(ExactFlow):
     
     CONDITIONS = ["RED", "GREEN", "YELLOW",]
     TRANSITIONS = ["RED2GREEN", "GREEN2YELLOW", "YELLOW2RED",]
@@ -34,16 +54,13 @@ class Light(flow.Network):
             if attr not in kwargs:
                 capacity = 1 if v == names[0] else 2
                 marking = 1 if v == names[0] else 0
-                condition = self.Condition(minimum=0, maximum=capacity, marking=marking,)
+                condition = self.Condition(maximum=capacity, marking=marking,)
                 kwargs[attr] = condition
         names = self.TRANSITIONS
         for v in names:
             attr = v.lower()
             if attr not in kwargs:
                 transition = self.Transition()
-                demux = transition.demux
-                predicate = types.MethodType(lambda self, flow: flow == self.maximum, demux, demux.__class__)
-                transition.demux.predicate = predicate
                 kwargs[attr] = transition
         super(Light, self).__init__(*args, **kwargs)
         conditions = []
@@ -58,8 +75,7 @@ class Light(flow.Network):
             j = i+1 if i < len(conditions)-1 else 0
             for pair in ((conditions[i], transitions[i],),
                          (transitions[i], conditions[j],),):
-                arc = self.Arc()
-                net.link(arc, *pair)
+                arc = self.Arc(*pair)
 
 
 #############################################################################
@@ -69,7 +85,7 @@ class Light(flow.Network):
 # Net composed of two light subnets
 #
 
-class Intersection(flow.Network):
+class Intersection(ExactFlow):
 
     # Global start state
     CONDITIONS = ['START',]
@@ -83,7 +99,7 @@ class Intersection(flow.Network):
             if attr not in kwargs:
                 capacity = 1
                 marking = 1
-                condition = self.Condition(minimum=0, maximum=capacity, marking=marking)
+                condition = self.Condition(maximum=capacity, marking=marking)
                 kwargs[attr] = condition
         attr = 'lights'
         if attr not in kwargs:
@@ -99,8 +115,7 @@ class Intersection(flow.Network):
             input = getattr(light, light.TRANSITIONS[-1].lower())
             output = getattr(light, light.TRANSITIONS[0].lower())
             for pair in ((input, start), (start, output)):
-                arc = self.Arc()
-                net.link(arc, *pair)
+                arc = self.Arc(*pair)
 
 #############################################################################
 #############################################################################

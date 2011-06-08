@@ -17,8 +17,9 @@ class Collection(net.Condition,):
     def __eq__(self, other):
         return self is other
     
+    @trellis.compute
     def __nonzero__(self):
-        return len(self) > 0
+        return self.marking.__nonzero__
     
     @trellis.compute
     def __len__(self):
