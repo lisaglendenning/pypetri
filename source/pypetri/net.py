@@ -166,6 +166,14 @@ class Network(trellis.Component):
         self.transitions.add(transition)
         return transition
     
+    @trellis.modifier
+    def linked(self, source, sink, **kwargs):
+        Arc = self.Arc
+        for o in source.outputs:
+            if o.output is sink:
+                return o
+        return Arc(source, sink, **kwargs)
+            
     arcs = trellis.make(sets.Set)
     transitions = trellis.make(sets.Set)
     conditions = trellis.make(sets.Set)

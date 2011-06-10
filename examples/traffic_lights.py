@@ -5,7 +5,6 @@ import types
 import functools
 
 from pypetri import trellis
-from pypetri import net
 from pypetri.collections import flow, sets
 
 #############################################################################
@@ -43,12 +42,8 @@ class Light(ExactFlow):
     CONDITIONS = ["RED", "GREEN", "YELLOW",]
     TRANSITIONS = ["RED2GREEN", "GREEN2YELLOW", "YELLOW2RED",]
     
-    def Condition(self, name, **kwargs):
-        capacity = 1 if name == self.CONDITIONS[0] else 2
-        marking = 1 if name == self.CONDITIONS[0] else 0
-        return super(Light, self).Condition(maximum=capacity, marking=marking, **kwargs)
-
-    def Output(self, name, **kwargs):
+    @trellis.modifier
+    def declare(self, name, **kwargs):
         CONDITIONS = self.CONDITIONS
         TRANSITIONS = self.TRANSITIONS
         if name in CONDITIONS:
@@ -59,27 +54,32 @@ class Light(ExactFlow):
             i = TRANSITIONS.index(name)
             j = 0 if (i == len(TRANSITIONS)-1) else i+1
             next = CONDITIONS[j]
-        source = getattr(self, name.lower())
-        sink = getattr(self, next.lower())
-        for o in source.outputs:
-            if o.output is sink:
-                break
-        else:
-            self.Arc(source, sink, **kwargs)
+        name = name.lower()
+        next = next.lower()
+        source = getattr(self, name)
+        sink = getattr(self, next)
+        self.linked(source, sink, **kwargs)
         return source
 
-    red = trellis.maintain(rule=lambda self: self.Output('RED'), 
+    def Condition(self, name, **kwargs):
+        capacity = 1 if name == self.CONDITIONS[0] else 2
+        marking = 1 if name == self.CONDITIONS[0] else 0
+        return super(Light, self).Condition(maximum=capacity, marking=marking, **kwargs)
+
+
+    # TODO: trying to figure out how to automate the following declarations...
+    red = trellis.maintain(rule=lambda self: self.declare('RED'), 
                            make=lambda self: self.Condition('RED'))
-    green = trellis.maintain(rule=lambda self: self.Output('GREEN'), 
+    green = trellis.maintain(rule=lambda self: self.declare('GREEN'), 
                              make=lambda self: self.Condition('GREEN'))
-    yellow = trellis.maintain(rule=lambda self: self.Output('YELLOW'), 
+    yellow = trellis.maintain(rule=lambda self: self.declare('YELLOW'), 
                               make=lambda self: self.Condition('YELLOW'))
 
-    red2green = trellis.maintain(rule=lambda self: self.Output('RED2GREEN'), 
+    red2green = trellis.maintain(rule=lambda self: self.declare('RED2GREEN'), 
                                  make=lambda self: self.Transition())
-    green2yellow = trellis.maintain(rule=lambda self: self.Output('GREEN2YELLOW'), 
+    green2yellow = trellis.maintain(rule=lambda self: self.declare('GREEN2YELLOW'), 
                                     make=lambda self: self.Transition())
-    yellow2red = trellis.maintain(rule=lambda self: self.Output('YELLOW2RED'), 
+    yellow2red = trellis.maintain(rule=lambda self: self.declare('YELLOW2RED'), 
                                   make=lambda self: self.Transition())
     
 #############################################################################
@@ -102,16 +102,8 @@ class Intersection(ExactFlow):
         for light in self.lights:
             input = getattr(light, light.TRANSITIONS[-1].lower())
             output = getattr(light, light.TRANSITIONS[0].lower())
-            for o in condition.outputs:
-                if o.output is output:
-                    break
-            else:
-                self.Arc(condition, output)
-            for i in condition.inputs:
-                if i.input is input:
-                    break
-            else:
-                self.Arc(input, condition)
+            for pair in ((input, condition), (condition, output),):
+                self.linked(*pair)
         return condition
 
     def __init__(self, ways=2, *args, **kwargs):

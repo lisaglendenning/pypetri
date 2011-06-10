@@ -25,12 +25,10 @@ class TestCaseNet(unittest.TestCase):
         for i in xrange(N):
             if i > 0:
                 pair = transitions[i-1], conditions[i]
-                arc = network.Arc(*pair)
-                arcs.append(arc)
+                arcs.append(network.linked(*pair))
             if i < N-1:
                 pair = conditions[i], transitions[i]
-                arc = network.Arc(*pair)
-                arcs.append(arc)
+                arcs.append(network.linked(*pair))
         return conditions, transitions, arcs
     
     def initialize(self, conditions):
