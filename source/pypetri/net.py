@@ -6,7 +6,6 @@ r"""Petri Net base."""
 from __future__ import absolute_import
 
 import functools
-import inspect
 
 from . import trellis
 
@@ -18,12 +17,7 @@ from .collections import sets
 #############################################################################
 
 class Event(functools.partial):
-    
-    def __new__(cls, *args, **kwargs):
-        obj = super(Event, cls).__new__(cls, *args, **kwargs)
-        if inspect.ismethod(obj.func):
-            obj.self = obj.func.im_self
-        return obj
+    pass
 
 #############################################################################
 #############################################################################

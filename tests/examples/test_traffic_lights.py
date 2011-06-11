@@ -3,12 +3,14 @@
 
 import unittest
 
-import examples.traffic_lights as traffic_lights
+from pypetri.examples.traffic_lights import *
 
 #############################################################################
 #############################################################################
 
-class TestCaseTrafficLights(unittest.TestCase):
+class TestCase(unittest.TestCase):
+    
+    Network = Network
     
     def initialized(self, network):
         for light in network.lights:
@@ -16,7 +18,7 @@ class TestCaseTrafficLights(unittest.TestCase):
             self.assertEqual(len(events), 1)
     
     def test_example(self):
-        network = traffic_lights.Network()
+        network = self.Network()
         self.initialized(network)
         for light in network.lights:
             transitions = [getattr(light, name.lower()) for name in light.TRANSITIONS]
