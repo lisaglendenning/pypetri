@@ -63,6 +63,20 @@ class TestCase(unittest.TestCase):
             self.assertEqual(network.output.head, i)
             network.output.dequeue()
         
+        # Drop
+        input = (7,8)
+        network.input.send(*input)
+        self.assertEqual(tuple(network.input), input)
+        output = input[1:]
+        network.drop()
+        for i in output:
+            network.deliver()
+        self.assertEqual(len(network.input), 0)
+        self.assertEqual(tuple(network.output), output)
+        for i in output:
+            self.assertEqual(network.output.head, i)
+            network.output.dequeue()
+            
         self.initialized(network)
 
 #############################################################################
