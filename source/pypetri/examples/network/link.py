@@ -60,6 +60,17 @@ class Queue(collection.Collection):
 
 class Link(net.Network):
     
+    @trellis.modifier
+    def Arcs(self):
+        input = self.input
+        for transition in self.deliver, self.delay, self.drop, self.duplicate:
+            self.Arc(input, transition)
+        output = self.output
+        for transition in self.deliver, self.duplicate:
+            self.Arc(transition, output)
+        for transition in self.delay, self.duplicate:
+            self.Arc(transition, input)
+    
     def Condition(self, **kwargs):
         return super(Link, self).Condition(Condition=Queue, **kwargs)
     
@@ -67,61 +78,24 @@ class Link(net.Network):
         pipe = operators.Pipeline(operators.Iter(), operators.Call())
         return super(Link, self).Transition(pipe=pipe, **kwargs)
     
-    @trellis.maintain(make=lambda self: self.Condition())
-    def input(self):
-        r"""Input queue."""
-        return self.input
-    
-    @trellis.maintain(make=lambda self: self.Condition())
-    def output(self):
-        r"""Output queue."""
-        return self.output
-    
-    @trellis.maintain(make=lambda self: self.Transition())
-    def deliver(self):
-        r"""Dequeue an input message and enqueue in output."""
-        transition = self.deliver
-        inputs = self.input,
-        for input in inputs:
-            self.linked(input, transition)
-        outputs = self.output,
-        for output in outputs:
-            self.linked(transition, output)
-        return transition
+    def __init__(self, *args, **kwargs):
+        super(Link, self).__init__(*args, **kwargs)
+        self.Arcs()
         
-    @trellis.maintain(make=lambda self: self.Transition())
-    def drop(self):
-        r"""Dequeue an input message."""
-        transition = self.drop
-        inputs = self.input,
-        for input in inputs:
-            self.linked(input, transition)
-        return transition
+    # Input queue
+    input = trellis.make(lambda self: self.Condition())
+    # Output queue
+    output = trellis.make(lambda self: self.Condition())
     
-    @trellis.maintain(make=lambda self: self.Transition())
-    def duplicate(self):
-        r"""Dequeue an input message and enqueue in input and output."""
-        transition = self.duplicate
-        inputs = self.input,
-        for input in inputs:
-            self.linked(input, transition)
-        outputs = self.output, self.input
-        for output in outputs:
-            self.linked(transition, output)
-        return transition
-    
-    @trellis.maintain(make=lambda self: self.Transition())
-    def delay(self):
-        r"""Dequeue and enqueue an input message."""
-        transition = self.delay
-        inputs = self.input,
-        for input in inputs:
-            self.linked(input, transition)
-        outputs = inputs
-        for output in outputs:
-            self.linked(transition, output)
-        return transition
-    
+    # Dequeue an input message and enqueue in output
+    deliver = trellis.make(lambda self: self.Transition())
+    # Dequeue an input message and enqueue in input and output
+    duplicate = trellis.make(lambda self: self.Transition())
+    # Dequeue and enqueue an input message
+    delay = trellis.make(lambda self: self.Transition())
+    # Dequeue an input message
+    drop = trellis.make(lambda self: self.Transition())
+
 #############################################################################
 #############################################################################
 

@@ -3,7 +3,7 @@
 
 import unittest
 
-from pypetri.examples.link import *
+from pypetri.examples.network.link import *
 
 #############################################################################
 #############################################################################

@@ -5,9 +5,9 @@ from .link import *
 
 #############################################################################
 #############################################################################
-
+# TODO: can make channel set dynamic?
 class Broadcast(net.Network):
-    r"""Connects a collection of Channels with a shared broadcast medium."""
+    r"""Connects a fixed array of Channels with a shared broadcast medium."""
     
     class Broadcast(net.Transition):
         
@@ -22,18 +22,25 @@ class Broadcast(net.Network):
         def Pipe(self):
             return operators.Call()
     
-    channels = trellis.make(trellis.List)
+    def Transition(self, *args, **kwargs):
+        return super(Broadcast, self).Transition(Transition=self.Broadcast, *args, **kwargs)
     
-    @trellis.maintain(make=lambda self: self.Transition(Transition=self.Broadcast))
-    def deliver(self):
+    @trellis.modifier
+    def Arcs(self):
         transition = self.deliver
         # two-way link to every channel
         for channel in self.channels:
             input = channel.sending.output
             output = channel.receiving.input
-            self.linked(transition, output)
-            self.linked(input, transition)
-        return transition
+            self.Arc(transition, output)
+            self.Arc(input, transition)
+            
+    def __init__(self, *args, **kwargs):
+        super(Broadcast, self).__init__(*args, **kwargs)
+        self.Arcs()
+        
+    channels = trellis.make(tuple)
+    deliver = trellis.make(lambda self: self.Transition())
 
 #############################################################################
 #############################################################################

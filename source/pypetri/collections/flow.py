@@ -184,8 +184,7 @@ class FlowNetwork(net.Network):
 
     def Condition(self, Condition=Condition, *args, **kwargs):
         return super(FlowNetwork, self).Condition(Condition, *args, **kwargs)
-    
-    @trellis.modifier
+
     def Transition(self, Transition=Transition, *args, **kwargs):
         return super(FlowNetwork, self).Transition(Transition, *args, **kwargs)
 
