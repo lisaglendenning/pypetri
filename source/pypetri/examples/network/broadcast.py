@@ -1,3 +1,5 @@
+# @copyright
+# @license
 
 from pypetri import net, trellis, operators
 
@@ -5,6 +7,7 @@ from .link import *
 
 #############################################################################
 #############################################################################
+
 # TODO: can make channel set dynamic?
 class Broadcast(net.Network):
     r"""Connects a fixed array of Channels with a shared broadcast medium."""

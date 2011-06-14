@@ -141,9 +141,8 @@ class Transition(Vertex):
 class Network(trellis.Component):
 
     @trellis.modifier
-    def Arc(self, source, sink, arc=None):
-        if arc is None:
-            arc = Arc(input=source, output=sink)
+    def Arc(self, source, sink, Arc=Arc, **kwargs):
+        arc = Arc(input=source, output=sink, **kwargs)
         link(arc, source, sink)
         return arc
 
