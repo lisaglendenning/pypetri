@@ -158,15 +158,11 @@ class Network(trellis.Component):
     transitions = trellis.make(sets.Set)
     conditions = trellis.make(sets.Set)
 
-    @trellis.compute
-    def next(self,):
-        ts = self.transitions
-        def next(transitions=iter, *args, **kwargs):
-            transitions = transitions(ts)
-            for t in transitions:
-                for event in t.next(*args, **kwargs):
-                    yield event
-        return next
+    def next(self, transitions=iter, *args, **kwargs):
+        transitions = transitions(self.transitions)
+        for t in transitions:
+            for event in t.next(*args, **kwargs):
+                yield event
     
     @trellis.modifier
     def __call__(self, *args, **kwargs):
