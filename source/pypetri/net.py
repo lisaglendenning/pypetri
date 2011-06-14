@@ -112,20 +112,17 @@ class Transition(Vertex):
         if pipe.output is not self.demux:
             pipe.output = self.demux
         return pipe
-    
-    @trellis.compute
-    def next(self):
+
+    def next(self, *args, **kwargs):
         fn = self.pass_in(self.demux)
         Event = self.Event
         send = self.send
-        def next(*args, **kwargs):
-            for input in fn(*args, **kwargs):
-                yield Event(send, input)
-        return next
-
-    @trellis.compute                
-    def send(self):
-        return self.pass_out(self.mux)
+        for input in fn(*args, **kwargs):
+            yield Event(send, input)
+  
+    def send(self, *args, **kwargs):
+        fn = self.pass_out(self.mux)
+        return fn(*args, **kwargs)
     
     # shortcut for executing the first default event
     def __call__(self, *args, **kwargs):
