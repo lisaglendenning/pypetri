@@ -3,7 +3,7 @@
 
 # Package metadata
 
-__version__ = "0.2"
+__version__ = "0.3"
 __url__ = ''
 __author__ = 'Lisa Glendenning'
 __author_email__ = 'author@lisa.glendenning.name'
