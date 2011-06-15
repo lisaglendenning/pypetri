@@ -1,23 +1,25 @@
 # @copyright
 # @license
 
-import pypetri.graph.net
+from pypetri.graph.net import *
 
 from .. import test_net
 
-
 #############################################################################
 #############################################################################
 
-
-class TestCaseNetGraph(test_net.TestCaseNet):
+class TestCase(test_net.TestCaseNet):
     
     def test_linear(self, N=2):
-        network, conditions, transitions, arcs = self.build_linear(N)
+        network = self.Network()
+        conditions, transitions, arcs = self.build_linear(network, N)
         self.initialize(conditions)
 
-        graphed = pypetri.graph.net.GraphNetwork(network)
-        g = graphed.snapshot()
+        def toname(v):
+            return str(id(v))
+
+        graphed = NetworkGraph(network, toname)
+        g = graphed.graph.snapshot()
         self.assertEqual(g.order(), 2*N-1)
         self.assertEqual(g.size(), 2*N-2)
 
