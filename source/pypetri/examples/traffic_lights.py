@@ -116,6 +116,8 @@ class Intersection(ExactFlow):
         for name in self.CONDITIONS:
             if obj is getattr(self, name.lower()):
                 return name
+        if obj in self.lights:
+            return str(self.lights.index(obj))
         return super(Intersection, self).toname(obj)
     
 #############################################################################

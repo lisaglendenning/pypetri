@@ -13,37 +13,43 @@ from . import graph
 #############################################################################
 #############################################################################
 
-class NetworkGraph(trellis.Component):
-
-    Graph = nx.MultiDiGraph
+class InternetworkGraph(trellis.Component):
     
-    toname = trellis.make()
-    network = trellis.make()
+    Graph = nx.MultiDiGraph
+
+    graphs = trellis.make(tuple)
     graph = trellis.make()
     
-    def __init__(self, network, toname, g=None, **kwargs):
+    def __init__(self, graphs, g=None, **kwargs):
         if g is None:
-            if 'name' not in kwargs:
-                kwargs['name'] = toname(network) 
             g = self.Graph(**kwargs)
             g = graph.Graph(graph=g)
-        super(NetworkGraph, self).__init__(network=network, 
-                                           toname=toname, 
-                                           graph=g,)
+        super(InternetworkGraph, self).__init__(graphs=graphs,
+                                                graph=g,)
 
     @trellis.maintain(make=dict)
     def edges(self):
         current = self.edges
         new = {}
-        toname = self.toname
-        vertices = self.vertices
         graph = self.graph
-        for node,vertex in vertices.iteritems():
-            for o in vertex.outputs:
-                output = toname(o.output)
-                if output in vertices:
-                    edge = (node, output)
-                    new[o] = edge
+        graphs = self.graphs
+        for g in graphs:
+            for vertex in g.vertices.itervalues():
+                k = g.graph.name
+                for o in vertex.outputs:
+                    if o not in g.edges:
+                        if o in new:
+                            output = new[o][1]
+                        else:
+                            output = None
+                        new[o] = (k, output)
+                for i in vertex.inputs:
+                    if i not in g.edges:
+                        if i in new:
+                            input = new[i][0]
+                        else:
+                            input = None
+                        new[i] = (input, k)
         removed = [k for k in current if k not in new or current[k] != new[k]]
         if removed:
             graph.remove_edges_from([current[k] for k in removed])
@@ -59,10 +65,14 @@ class NetworkGraph(trellis.Component):
         
     @trellis.maintain(make=dict)
     def vertices(self):
-        network = self.network
         graph = self.graph
-        toname = self.toname
-        new = dict([(toname(v), v) for v in itertools.chain(network.conditions, network.transitions)])
+        graphs = self.graphs
+        new = {}
+        for g in graphs:
+            k = g.graph.name
+            if k in new:
+                raise ValueError(graphs)
+            new[k] = g
         current = self.vertices
         removed = [k for k in current if k not in new or current[k] != new[k]]
         if removed:
@@ -76,10 +86,9 @@ class NetworkGraph(trellis.Component):
         if added or removed:
             trellis.mark_dirty()
         return current
-    
-    @trellis.compute
-    def snapshot(self):
-        return self.graph.snapshot
 
+    def snapshot(self):
+        return self.graph.snapshot()
+    
 #############################################################################
 #############################################################################
