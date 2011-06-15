@@ -44,15 +44,16 @@ class NetworkGraph(trellis.Component):
                 if output in vertices:
                     edge = (node, output)
                     new[o] = edge
-        removed = [k for k in current if k not in new or current[k] != new[k]]
-        if removed:
-            graph.remove_edges_from([current[k] for k in removed])
-            for k in removed:
-                del current[k]
+        removed = [k for k in current if k not in new or current[k] is not new[k]]
+        for k in removed:
+            edge = current[k]
+            graph.remove_edge(*edge, key=id(k))
+            del current[k]
         added = [k for k in new if k not in current]
-        if added:
-            current.update([(k, new[k]) for k in added])
-            graph.add_edges_from([current[k] for k in added])
+        for k in added:
+            edge = new[k]
+            current[k] = edge
+            graph.add_edge(*edge, key=id(k))
         if added or removed:
             trellis.mark_dirty()
         return current
@@ -64,15 +65,16 @@ class NetworkGraph(trellis.Component):
         toname = self.toname
         new = dict([(toname(v), v) for v in itertools.chain(network.conditions, network.transitions)])
         current = self.vertices
-        removed = [k for k in current if k not in new or current[k] != new[k]]
-        if removed:
-            graph.remove_nodes_from(removed)
-            for k in removed:
-                del current[k]
+        removed = [k for k in current if k not in new or current[k] is not new[k]]
+        for k in removed:
+            graph.remove_node(k)
+            del current[k]
         added = [k for k in new if k not in current]
-        if added:
-            current.update([(k, new[k]) for k in added])
-            graph.add_nodes_from(added)
+        for k in added:
+            v = new[k]
+            current[k] = v
+            role = 'condition' if v in network.conditions else 'transition'
+            graph.add_node(k, role=role)
         if added or removed:
             trellis.mark_dirty()
         return current
