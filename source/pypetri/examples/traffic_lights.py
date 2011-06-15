@@ -29,6 +29,10 @@ class ExactFlow(flow.Network):
             kwargs['demux'] = flow.Transition.Demultiplexer(predicate=self.ismax)
         return super(ExactFlow, self).Transition(*args, **kwargs)
 
+    def toname(self, obj):
+        if obj is self:
+            return self.__class__.__name__
+        
 #############################################################################
 #############################################################################
 
@@ -71,6 +75,12 @@ class Light(ExactFlow):
     green2yellow = trellis.make(lambda self: self.Transition())
     yellow2red = trellis.make(lambda self: self.Transition())
     
+    def toname(self, obj):
+        for name in itertools.chain(self.CONDITIONS, self.TRANSITIONS):
+            if obj is getattr(self, name.lower()):
+                return name
+        return super(Light, self).toname(obj)
+
 #############################################################################
 #############################################################################
 
@@ -102,6 +112,12 @@ class Intersection(ExactFlow):
         super(Intersection, self).__init__(*args, **kwargs)
         self.Arcs()
 
+    def toname(self, obj):
+        for name in self.CONDITIONS:
+            if obj is getattr(self, name.lower()):
+                return name
+        return super(Intersection, self).toname(obj)
+    
 #############################################################################
 #############################################################################
 

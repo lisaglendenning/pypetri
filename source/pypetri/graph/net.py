@@ -27,7 +27,7 @@ class NetworkGraph(trellis.Component):
     
     def __init__(self, network, toname, g=None, **kwargs):
         if g is None:
-            g = self.Graph(name=str(net), **kwargs)
+            g = self.Graph(name=toname(network), **kwargs)
             g = graph.Graph(graph=g)
         super(NetworkGraph, self).__init__(network=network, 
                                            toname=toname, 

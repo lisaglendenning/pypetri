@@ -1,20 +1,28 @@
+"""
+Requires pygraphviz
+"""
 
-import pypetri.graph.net
+import networkx as nx
 
 SHAPE = 'shape'
-SHAPES = { 'Condition': 'ellipse', 
-           'Transition': 'box',
-           'Network': 'doubleoctagon',
+SHAPES = { 'conditions': 'ellipse', 
+           'transitions': 'box',
          }
 
 def markup(network, graph=None, shapes=None):
     if shapes is None:
         shapes = SHAPES
     if graph is None:
-        graph = network.snapshot()
+        graph = network.graph.snapshot()
     for u in graph:
         v = network.vertices[u]
-        for role in [getattr(network.net, k) for k in shapes]:
-            if isinstance(v, role):
-                graph.node[SHAPE] = shapes[role]
+        for k in shapes:
+            role = getattr(network.network, k)
+            if v in role:
+                graph.node[u][SHAPE] = shapes[k]
     return graph
+
+def write(graph, filename=None):
+    if filename is None:
+        filename = '%s.dot' % graph.name
+    nx.write_dot(graph, filename)
